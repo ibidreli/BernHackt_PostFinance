@@ -1,0 +1,9 @@
+<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+  @for (category of categories; track category.label) {
+    <div class="rounded-xl border border-border bg-surface p-5">
+      <p class="text-sm text-muted-foreground">{{ category.label }}</p>
+      <p class="mt-2 text-2xl font-semibold text-foreground">{{ category.value }}</p>
+      <p class="mt-1 text-sm text-success">{{ category.change }}</p>
+    </div>
+  }
+</div>

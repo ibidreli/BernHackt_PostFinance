@@ -1,3 +1,60 @@
-/* You can add global styles to this file, and also import other style files */
-
 @import 'tailwindcss';
+@plugin "daisyui" {
+  themes: false;
+}
+
+@theme {
+  --color-pf-yellow: #ffcc00;
+  --color-pf-green: #a5c400;
+  --color-pf-teal: #005b61;
+  --color-pf-gray: #f2f2f2;
+  --color-pf-white: #ffffff;
+
+  --color-primary: var(--color-pf-yellow);
+  --color-secondary: var(--color-pf-green);
+  --color-accent: var(--color-pf-teal);
+
+  --color-background: var(--color-pf-white);
+  --color-surface: var(--color-pf-gray);
+  --color-foreground: var(--color-pf-teal);
+  --color-border: color-mix(in srgb, var(--color-pf-teal) 15%, transparent);
+
+  --color-shell: var(--color-pf-gray);
+
+  /* Text-safe tokens. Opacity-modified foreground fails WCAG AA on light
+     surfaces, so muted/accent text uses dedicated per-theme colours instead. */
+  --color-muted-foreground: #2a7276; /* >= 4.9:1 on --color-surface */
+  --color-success: #5c6e00; /* >= 5.0:1 on --color-surface */
+  --color-ring: var(--color-pf-teal);
+}
+
+:root {
+  color-scheme: light;
+}
+
+:root.dark {
+  color-scheme: dark;
+
+  --color-background: #0a1a1b;
+  --color-surface: #10282a;
+  --color-foreground: #f2f2f2;
+  --color-border: color-mix(in srgb, var(--color-pf-gray) 15%, transparent);
+
+  --color-shell: #050f10;
+
+  --color-muted-foreground: #9aa3a4; /* >= 6.0:1 on --color-surface */
+  --color-success: var(--color-pf-green); /* >= 7.7:1 on --color-surface */
+  --color-ring: var(--color-pf-yellow);
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+}
+
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+}
