@@ -7,12 +7,14 @@ from `app.state` rather than a DB session.
 
 from __future__ import annotations
 
+from collections import Counter
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 
 from app.core.config import CSV_PATH
 from app.data.data_personal import load_raw_transactions
+from app.repositories.transaction_repository import TransactionRepository
 
 # T10 will mount the OData forecast routes here, e.g.:
 #   from app.api.routes.forecast import router as forecast_router
@@ -21,7 +23,9 @@ from app.data.data_personal import load_raw_transactions
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.raw_transactions = load_raw_transactions()
+    raw = load_raw_transactions()
+    app.state.raw_transactions = raw
+    app.state.transaction_repository = TransactionRepository.from_raw(raw)
     yield
 
 
@@ -39,8 +43,13 @@ app = FastAPI(
 
 @app.get("/health", tags=["meta"])
 def health(request: Request) -> dict:
-    """Liveness probe that also proves the CSV was loaded at startup."""
+    """Liveness probe that also proves the CSV was loaded and normalized
+    at startup (raw load: T0, normalization: T1)."""
     df = request.app.state.raw_transactions
+    repo: TransactionRepository = request.app.state.transaction_repository
+    transactions = repo.all()
+    flow_counts = Counter(t.flow for t in transactions)
+
     return {
         "status": "ok",
         "csv_path": str(CSV_PATH),
@@ -49,4 +58,11 @@ def health(request: Request) -> dict:
             "from": df["date"].min().date().isoformat(),
             "to": df["date"].max().date().isoformat(),
         },
+        "transactions_normalized": len(transactions),
+        "flow_counts": dict(flow_counts),
+        "distinct_merchants": len({t.merchant for t in transactions}),
+        "distinct_categories": len(
+            {t.category_main for t in transactions if t.category_main}
+        ),
+        "sample_merchants": sorted({t.merchant for t in transactions})[:10],
     }
