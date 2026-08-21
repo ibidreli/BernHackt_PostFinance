@@ -2,7 +2,7 @@
   "mcpServers": {
     "angular-cli": {
       "command": "npx",
-      "args": ["-y", "-p", "@angular/cli@latest", "ng", "mcp"]
+      "args": ["-y", "@angular/cli", "mcp"]
     }
   }
 }
