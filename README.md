@@ -2,6 +2,8 @@
 
 Project for Bern Hackt 2026
 
+Challenge: [Beyond the List](https://www.bernhackt.ch/challenges/2026-beyond-the-list)
+
 ## Project Structure
 
 ```text
@@ -26,3 +28,7 @@ ng serve
 ### API
 
 TODO
+
+### Data
+
+Mock data is provided in `/data` as `.csv` files
