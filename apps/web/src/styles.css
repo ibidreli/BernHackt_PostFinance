@@ -18,6 +18,14 @@
   --color-surface: var(--color-pf-gray);
   --color-foreground: var(--color-pf-teal);
   --color-border: color-mix(in srgb, var(--color-pf-teal) 15%, transparent);
+
+  --color-shell: var(--color-pf-gray);
+
+  /* Text-safe tokens. Opacity-modified foreground fails WCAG AA on light
+     surfaces, so muted/accent text uses dedicated per-theme colours instead. */
+  --color-muted-foreground: #2a7276; /* >= 4.9:1 on --color-surface */
+  --color-success: #5c6e00; /* >= 5.0:1 on --color-surface */
+  --color-ring: var(--color-pf-teal);
 }
 
 :root {
@@ -31,9 +39,22 @@
   --color-surface: #10282a;
   --color-foreground: #f2f2f2;
   --color-border: color-mix(in srgb, var(--color-pf-gray) 15%, transparent);
+
+  --color-shell: #050f10;
+
+  --color-muted-foreground: #9aa3a4; /* >= 6.0:1 on --color-surface */
+  --color-success: var(--color-pf-green); /* >= 7.7:1 on --color-surface */
+  --color-ring: var(--color-pf-yellow);
 }
 
 body {
   background-color: var(--color-background);
   color: var(--color-foreground);
+}
+
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
 }

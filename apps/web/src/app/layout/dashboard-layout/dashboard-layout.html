@@ -1,0 +1,51 @@
+<div class="flex h-screen gap-2 bg-shell p-2">
+  <app-sidebar [collapsed]="collapsed()" />
+
+  <div
+    class="flex flex-1 flex-col overflow-hidden rounded-xl border border-border bg-background shadow-sm"
+  >
+    <header class="flex items-center justify-between border-b border-border px-4 py-3">
+      <div class="flex items-center gap-3">
+        <button
+          type="button"
+          (click)="toggleCollapsed()"
+          aria-label="Toggle sidebar"
+          aria-controls="app-sidebar"
+          [attr.aria-expanded]="!collapsed()"
+          class="grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-surface hover:text-foreground"
+        >
+          <svg lucidePanelLeft aria-hidden="true" class="size-4"></svg>
+        </button>
+
+        <div class="h-4 w-px bg-border"></div>
+
+        <nav aria-label="Breadcrumb">
+          <ol class="flex items-center gap-1.5 text-sm">
+            <li class="text-muted-foreground">PostFinance</li>
+            <li aria-hidden="true" class="flex items-center">
+              <svg lucideChevronRight class="size-3.5 text-muted-foreground"></svg>
+            </li>
+            <li aria-current="page" class="font-medium text-foreground">Home</li>
+          </ol>
+        </nav>
+      </div>
+
+      <button
+        type="button"
+        (click)="theme.toggle()"
+        [attr.aria-label]="theme.isDark() ? 'Switch to light theme' : 'Switch to dark theme'"
+        class="grid size-8 place-items-center rounded-full border border-border text-foreground hover:bg-surface"
+      >
+        @if (theme.isDark()) {
+          <svg lucideMoon aria-hidden="true" class="size-4"></svg>
+        } @else {
+          <svg lucideSun aria-hidden="true" class="size-4"></svg>
+        }
+      </button>
+    </header>
+
+    <main class="flex-1 overflow-y-auto p-6">
+      <router-outlet />
+    </main>
+  </div>
+</div>
