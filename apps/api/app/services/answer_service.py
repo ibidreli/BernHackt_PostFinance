@@ -415,6 +415,20 @@ def answer_what_if(
     if adjustment is None:
         raise UnresolvedAdjustmentError("Konnte den genannten Posten nicht in den Daten finden.")
 
+    # `buffer_after_months`/`wait_months` below must be computed from the
+    # SCENARIO's ongoing monthly expenses/savings rate, not the baseline's -
+    # otherwise cancelling/adjusting a recurring payment changes
+    # `scenario_end` (the numerator) but not what it's measured against
+    # (the denominator), so the "how comfortable/how long to recover"
+    # numbers barely move regardless of what's cancelled. Found live: after
+    # the CHF 0/"Ziel" formulation fixes, "Netflix kündigen" at `present`
+    # still said "17 Monate, bis der Puffer sich erholt" - a number that
+    # turned out to be nearly identical to the *baseline* (no cancellation
+    # at all) "wait_months", because `monthly_expenses`/`monthly_net_savings`
+    # were derived from the unmodified `recurring_payments`. Reusing
+    # `overrides.recurring_payments` (the same scenario the series/impact
+    # numbers already use) here makes wait_months correctly reflect the
+    # freed-up CHF 29.90/month too (17 -> 15 in this case).
     if horizon == "present":
         # Feature #4's real simulate() - exact, event-dated, already
         # handles all 4 adjustment types correctly. Reused as-is rather
@@ -430,8 +444,13 @@ def answer_what_if(
         months_remaining = _months_remaining_present(sim.baseline.horizon_end, as_of)
         impact_monthly_chf = sim.diff.monthly_chf
         impact_cumulative_chf = sim.diff.total_at_horizon_chf
+        # `apply_adjustments` is a no-op for `OneOff` (it only touches
+        # recurring payments) - safe to call unconditionally here, unlike
+        # the long-horizon branch below where the OneOff/recurring split
+        # also decides how the *series* is built.
+        overrides = apply_adjustments(recurring_payments, [adjustment])
         lt = project_long_term(
-            transactions, recurring_payments, classifications, balance_repo,
+            transactions, overrides.recurring_payments, classifications, balance_repo,
             months=1, as_of=as_of, salary_growth_pct=0.0, inflation_pct=0.0,
         )
         monthly_expenses = lt.monthly_fixed_expense_chf + lt.monthly_variable_expense_chf
@@ -442,23 +461,26 @@ def answer_what_if(
         inflation_pct = assumptions.inflation_pct if assumptions else None
         savings_rate_pct = assumptions.savings_rate_pct if assumptions else None
 
-        lt = project_long_term(
+        baseline_lt = project_long_term(
             transactions, recurring_payments, classifications, balance_repo,
             months=months, as_of=as_of,
             salary_growth_pct=salary_growth_pct, inflation_pct=inflation_pct, savings_rate_pct=savings_rate_pct,
         )
-        baseline_series = lt.series
+        baseline_series = baseline_lt.series
 
         if isinstance(adjustment, OneOff):
-            scenario_series = _shift_series(lt.series, -adjustment.amount_chf)
+            # A one-off doesn't change the ongoing monthly burn rate -
+            # baseline is the correct (and only sensible) basis here.
+            scenario_series = _shift_series(baseline_lt.series, -adjustment.amount_chf)
+            lt = baseline_lt
         else:
             overrides = apply_adjustments(recurring_payments, [adjustment])
-            scenario_lt = project_long_term(
+            lt = project_long_term(
                 transactions, overrides.recurring_payments, classifications, balance_repo,
                 months=months, as_of=as_of,
                 salary_growth_pct=salary_growth_pct, inflation_pct=inflation_pct, savings_rate_pct=savings_rate_pct,
             )
-            scenario_series = scenario_lt.series
+            scenario_series = lt.series
 
         scenario_end = scenario_series[-1].expected_chf
         months_remaining = float(months)

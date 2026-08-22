@@ -16,7 +16,7 @@ from pathlib import Path
 import openai
 from pydantic import BaseModel, Field
 
-from app.core.config import ASSISTANT_LLM_TIMEOUT_SECONDS, OPENAI_MODEL
+from app.core.config import ASSISTANT_LLM_TIMEOUT_SECONDS, OPENAI_MODEL, TIGHT_BUFFER_MONTHS
 from app.schemas.assistant import AnswerStatus, AssistantFacts, AssistantHorizon, AssumptionsUsed, Lever, ResponseIntent
 from app.services.llm_client import AssistantLLMError, AssistantLLMTimeoutError, get_client
 
@@ -163,7 +163,15 @@ def template_answer(input_data: FormulationInput) -> str:
         if f.buffer_after_months is not None:
             sentences.append(f"Der Puffer danach liegt bei nur rund {_months_phrase(f.buffer_after_months)}.")
         if f.wait_months is not None:
-            sentences.append(f"Mit etwas mehr Geduld - rund {_months_phrase(f.wait_months)} - würde der Puffer wieder reichen.")
+            # Names the actual target (TIGHT_BUFFER_MONTHS) `wait_months` is
+            # counting down to - found live: "rund X Monaten - würde der
+            # Puffer wieder reichen" names no target at all, so "wieder
+            # reichen"/"sich erholt" reads as a dangling claim with nothing
+            # to anchor it to (user: "was macht dieser Satz genau?").
+            sentences.append(
+                f"Mit etwas mehr Geduld - rund {_months_phrase(f.wait_months)} - würde der Puffer wieder "
+                f"{round(TIGHT_BUFFER_MONTHS)} Monate decken."
+            )
 
     elif input_data.status == "no_unless":
         if f.gap_chf is not None:

@@ -23,10 +23,18 @@ from __future__ import annotations
 
 import re
 
+from app.core.config import TIGHT_BUFFER_MONTHS
 from app.schemas.assistant import AssistantFacts, Lever
 
 _CHF_AMOUNT_RE = re.compile(r"CHF\s*(-?\d[\d']*(?:\.\d+)?)")
-_MONTHS_AMOUNT_RE = re.compile(r"(-?\d[\d']*(?:\.\d+)?)\s*Monat(?:en)?\b")
+# German has three inflections after a count: "1 Monat" (singular), "3
+# Monate" (plural nominative/accusative - no trailing "n"), "in 3 Monaten"
+# (plural dative). The previous pattern only covered "Monat"/"Monaten" and
+# silently ignored "Monate" - found live: a formulated answer with "17
+# Monate warten" (a real, wrong number - the true wait_months was 14) went
+# completely unmatched by this regex, so `verify_answer_text` never even
+# looked at it and let a fabricated number through uncaught.
+_MONTHS_AMOUNT_RE = re.compile(r"(-?\d[\d']*(?:\.\d+)?)\s*Monat(?:en|e)?\b")
 
 # Wider for 5y/10y: the prompt instructs rounding to the nearest 100 for
 # those horizons, and "nearest 100" can legitimately land up to 50 CHF
@@ -62,7 +70,16 @@ def _expected_chf_values(facts: AssistantFacts, levers: list[Lever]) -> list[flo
 
 
 def _expected_month_values(facts: AssistantFacts) -> list[float]:
-    return [v for v in (facts.buffer_after_months, facts.wait_months, facts.months_remaining) if v is not None]
+    values = [v for v in (facts.buffer_after_months, facts.wait_months, facts.months_remaining) if v is not None]
+    if facts.wait_months is not None:
+        # The formulation prompt now names the fixed target `wait_months`
+        # counts down to (TIGHT_BUFFER_MONTHS, e.g. "bis der Puffer wieder
+        # 3 Monate deckt") so the sentence isn't a dangling claim with no
+        # anchor - that number must be accepted here too, or a correctly
+        # instructed LLM answer would fail verification and get discarded
+        # for no reason.
+        values.append(TIGHT_BUFFER_MONTHS)
+    return values
 
 
 def _matches_any(value: float, expected: list[float], tolerance: float) -> bool:
