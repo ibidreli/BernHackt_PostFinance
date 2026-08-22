@@ -13,6 +13,11 @@ export const routes: Routes = [
         loadComponent: () => import('./pages/dashboard/dashboard').then((m) => m.Dashboard),
       },
       {
+        path: 'forecast',
+        title: 'Prognose',
+        loadComponent: () => import('./pages/forecast/forecast').then((m) => m.ForecastPage),
+      },
+      {
         path: 'assistant',
         title: 'Assistenz',
         loadComponent: () => import('./pages/assistant/assistant').then((m) => m.AssistantPage),

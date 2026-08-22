@@ -1,0 +1,192 @@
+@let current = forecast.current();
+@let diff = forecast.diff();
+
+<div class="mx-auto flex h-full max-w-3xl flex-col justify-center gap-6">
+  @if (forecast.error()) {
+    <div class="rounded-xl border border-danger/30 bg-danger/10 p-6">
+      <p class="font-medium text-danger">Prognose nicht berechenbar</p>
+      <p class="mt-1 text-sm text-muted-foreground">
+        Ohne Startsaldo lässt sich nicht sagen, wie viel frei ist. Startsaldo im Profil hinterlegen.
+      </p>
+    </div>
+  } @else if (current) {
+    <!-- Kernaussage zuerst, Grafik danach -->
+    <header>
+      <p class="text-4xl font-semibold tracking-tight tabular-nums sm:text-5xl">
+        {{ headline() }}
+      </p>
+      <p class="mt-2 text-lg text-foreground">{{ tightLabel() }}</p>
+      <p class="mt-1 text-sm text-muted-foreground">
+        Zwischen {{ chf(current.free_to_spend.lower_chf) }} und
+        {{ chf(current.free_to_spend.upper_chf) }}
+        @if (!current.assumptions.interest_applied) {
+          · keine Zins- oder Renditeannahme
+        }
+      </p>
+    </header>
+
+    <app-forecast-chart
+      [series]="current.series"
+      [baseline]="forecast.scenario() ? forecast.baseline()!.series : null"
+      [payments]="current.known_payments"
+      [tightDate]="current.tight_date?.date ?? null"
+    />
+
+    <!-- Ergebniszeile: kumuliert, nicht monatlich -->
+    @if (diff) {
+      <p class="animate-rise-in border-t border-border pt-4 text-sm">
+        <span class="font-medium">{{ diff.monthly_chf >= 0 ? '+' : '' }}{{ chf(diff.monthly_chf) }}/Monat</span>
+        <span class="text-muted-foreground"> · </span>
+        <span>
+          Am Horizontende: {{ diff.total_at_horizon_chf >= 0 ? '+' : '' }}{{ chf(diff.total_at_horizon_chf) }}
+        </span>
+        @if (diff.tight_date_shift_days !== null) {
+          <span class="text-muted-foreground"> · </span>
+          <span>
+            @if (diff.tight_date_shift_days === 0) {
+              Engpass-Datum unverändert
+            } @else {
+              Engpass-Datum {{ abs(diff.tight_date_shift_days) }} Tage
+              {{ diff.tight_date_shift_days > 0 ? 'später' : 'früher' }}
+            }
+          </span>
+        }
+      </p>
+    }
+
+    @if (current.assumptions.excluded_outliers.length || current.assumptions.notes.length) {
+      <p class="text-xs text-muted-foreground">
+        Basis: {{ current.assumptions.variable_baseline_method }}, Band
+        {{ current.assumptions.band_method }}.
+        @if (outliers()) {
+          Ausgeschlossene Ausreisser: {{ outliers() }}.
+        }
+        @for (note of current.assumptions.notes; track note) {
+          {{ note }}
+        }
+      </p>
+    }
+  } @else {
+    <div class="flex items-center gap-2 text-sm text-muted-foreground">
+      <span class="loading loading-dots loading-sm"></span> Prognose wird gerechnet …
+    </div>
+  }
+</div>
+
+<!-- Rechte Leiste: gleiche eingerückte Optik wie die Sidebar -->
+<ng-template appRail>
+  <div class="flex h-full flex-col gap-6 px-3 py-2 text-foreground">
+    <section>
+      <h2 class="px-2 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Horizont</h2>
+      <div class="grid grid-cols-2 gap-1.5">
+        @for (horizon of horizons; track horizon.value) {
+          <button
+            type="button"
+            class="rounded-lg border px-2 py-2 text-sm"
+            [class.border-border]="forecast.horizon() === horizon.value"
+            [class.bg-background]="forecast.horizon() === horizon.value"
+            [class.font-medium]="forecast.horizon() === horizon.value"
+            [class.border-transparent]="forecast.horizon() !== horizon.value"
+            [class.text-muted-foreground]="forecast.horizon() !== horizon.value"
+            [attr.aria-pressed]="forecast.horizon() === horizon.value"
+            (click)="setHorizon(horizon.value)"
+          >
+            {{ horizon.label }}
+          </button>
+        }
+      </div>
+    </section>
+
+    <section>
+      <h2 class="px-2 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Szenario</h2>
+      <div class="flex flex-col gap-1.5">
+        @for (preset of presets(); track preset.id) {
+          <button
+            type="button"
+            class="rounded-lg px-2 py-2 text-left text-sm text-muted-foreground hover:bg-surface hover:text-foreground"
+            (click)="forecast.add(preset)"
+          >
+            {{ preset.label }}
+          </button>
+        }
+      </div>
+
+      @if (forecast.adjustments().length) {
+        <div class="mt-3 flex flex-wrap gap-1.5 px-2">
+          @for (adjustment of forecast.adjustments(); track adjustment.id) {
+            <button
+              type="button"
+              class="animate-rise-in flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-xs text-pf-teal"
+              [attr.aria-label]="adjustment.label + ' entfernen'"
+              (click)="forecast.remove(adjustment.id)"
+            >
+              {{ adjustment.label }}
+              <span aria-hidden="true" class="font-medium">×</span>
+            </button>
+          }
+          <button
+            type="button"
+            class="rounded-full px-2 py-1 text-xs text-muted-foreground underline"
+            (click)="forecast.reset()"
+          >
+            zurücksetzen
+          </button>
+        </div>
+      }
+    </section>
+
+    <section class="px-2">
+      <h2 class="pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Abo kündigen</h2>
+      <div class="flex gap-1.5">
+        <select
+          class="select select-sm flex-1 bg-surface"
+          aria-label="Abo"
+          [value]="cancelId()"
+          (change)="cancelId.set($any($event.target).value)"
+        >
+          <option value="">wählen …</option>
+          @for (payment of forecast.expenseSubscriptions(); track payment.recurring_id) {
+            <option [value]="payment.recurring_id">{{ name(payment) }} · {{ chf(payment.amount_chf) }}</option>
+          }
+        </select>
+        <button type="button" class="btn btn-sm" [disabled]="!cancelId()" (click)="cancelSelected()">OK</button>
+      </div>
+    </section>
+
+    <section class="px-2">
+      <h2 class="pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Abo hinzufügen</h2>
+      <div class="flex flex-col gap-1.5">
+        <input
+          class="input input-sm bg-surface"
+          aria-label="Bezeichnung"
+          [value]="newLabel()"
+          (input)="newLabel.set($any($event.target).value)"
+        />
+        <div class="flex gap-1.5">
+          <input
+            class="input input-sm w-20 bg-surface"
+            type="number"
+            aria-label="Betrag in CHF"
+            [value]="newAmount()"
+            (input)="newAmount.set(+$any($event.target).value)"
+          />
+          <select
+            class="select select-sm flex-1 bg-surface"
+            aria-label="Intervall"
+            [value]="newInterval()"
+            (change)="newInterval.set($any($event.target).value)"
+          >
+            <option value="monthly">monatlich</option>
+            <option value="quarterly">quartalsweise</option>
+            <option value="yearly">jährlich</option>
+          </select>
+          <button type="button" class="btn btn-sm btn-primary" (click)="addSubscription()">+</button>
+        </div>
+      </div>
+    </section>
+
+    @if (forecast.isLoading()) {
+      <p class="px-2 text-xs text-muted-foreground">rechnet …</p>
+    }
+  </div>
+</ng-template>

@@ -1,19 +1,30 @@
+import { NgTemplateOutlet } from '@angular/common';
 import { Component, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs';
 import { LucideChevronRight, LucideMoon, LucidePanelLeft, LucideSun } from '@lucide/angular';
 
+import { Rail } from '../../core/rail';
 import { Theme } from '../../core/theme';
 import { Sidebar } from '../sidebar/sidebar';
 
 @Component({
-  imports: [RouterOutlet, Sidebar, LucidePanelLeft, LucideChevronRight, LucideSun, LucideMoon],
+  imports: [
+    NgTemplateOutlet,
+    RouterOutlet,
+    Sidebar,
+    LucidePanelLeft,
+    LucideChevronRight,
+    LucideSun,
+    LucideMoon,
+  ],
   selector: 'app-dashboard-layout',
   templateUrl: './dashboard-layout.html',
 })
 export class DashboardLayout {
   protected readonly theme = inject(Theme);
+  protected readonly rail = inject(Rail);
   protected readonly collapsed = signal(false);
 
   private readonly router = inject(Router);

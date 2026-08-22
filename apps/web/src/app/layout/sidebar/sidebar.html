@@ -47,7 +47,9 @@
                 [class.text-foreground]="link.isActive"
                 [class.text-muted-foreground]="!link.isActive"
               >
-                @if (item.icon === 'assistant') {
+                @if (item.icon === 'forecast') {
+                  <svg lucideChartLine aria-hidden="true" class="size-4 shrink-0"></svg>
+                } @else if (item.icon === 'assistant') {
                   <svg lucideMessageSquare aria-hidden="true" class="size-4 shrink-0"></svg>
                 } @else {
                   <svg lucideLayoutGrid aria-hidden="true" class="size-4 shrink-0"></svg>
