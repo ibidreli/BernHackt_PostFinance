@@ -60,3 +60,30 @@ Weitere Annahmen siehe T0–T13 unten, jeweils im Kontext.
 
 **Erweiterungen:**
 - `ChartSeriesPoint` wird von allen 3 Chart-Typen geteilt (auch dort, wo z. B. `before_after` eigentlich kein Band braucht) — hält die Typenzahl klein, könnte aber pro Chart-Typ spezifischer werden, falls das Frontend das unbenutzte `lower_chf`/`upper_chf` bei `before_after` verwirrend findet.
+
+---
+
+## T2 — forecast_service-Erweiterung für present/1y/5y/10y
+
+**Stand:** Fertig — `project_long_term()` in `forecast_service.py`, live gegen die echten Daten getestet (alle 3 Horizonte, Band-Null-Breite bei m=0, Savings-Override, Wachstums-/Inflations-Sensitivität, Fixkosten-Flach-Check, 2 Fehlerpfade). `present` selbst braucht keine neue Funktion — mappt 1:1 auf das bestehende `forecast(horizon="next_salary")`, wird erst in T7 verdrahtet.
+
+**Bugs:** Ein Bug bei mir selbst gefunden und korrigiert, bevor er lief: `LongTermForecast` (ein `NamedTuple`) hatte versehentlich `Field(default=0.0)` als Default-Wert kopiert (Pydantic-Reflex aus den Schema-Dateien) — `NamedTuple` kennt kein `Field()`, das wäre ein `NameError` beim Import gewesen. Beim Schreiben direkt aufgefallen und auf einfache Defaults (bzw. gar keine, da jedes Feld im `return` sowieso gesetzt wird) korrigiert, bevor es überhaupt getestet wurde.
+
+**Design-Entscheidungen:**
+- **Kein Event-Datums-Modell für 1y/5y/10y.** Die bestehende `_build_series`-Logik (T7, Feature #4) trackt einzelne projizierte Topf-1-Termine — über 10 Jahre/120 mögliche Vorkommen wäre das sowohl unnötig fein aufgelöst als auch potenziell irreführend (welche einzelne Quartalsrechnung in 8 Jahren "wirklich" an diesem Tag fällt, ist nicht seriös vorhersagbar). Stattdessen: jede aktive RecurringPayment wird zu einer monatsäquivalenten Rate zusammengefasst (Einkommen und fixe Ausgaben separat), Wachstum/Inflation wirken auf diese Rate über stetige monatliche Verzinsung aus der Jahres-Prozentangabe.
+- **Monatliche Auflösung für alle drei Horizonte** (nicht vierteljährlich für 5y/10y, wie ich in der Planung ursprünglich vorgeschlagen hatte) — die Payload-Sorge war unbegründet: 121 Punkte à 4 Zahlen sind ~6 KB, kein Problem. Einfacher (eine Auflösung statt zwei) schlägt die vorzeitige Optimierung.
+- **Fixkosten bleiben nominal flach** (deine Entscheidung) — `monthly_fixed_expense_chf` ist unabhängig von `inflation_pct`, live verifiziert.
+- **Band-Formel wiederverwendet** exakt die sqrt-gedämpfte Spread-Logik aus `_build_series` (Feature #4, dort bereits gegen den Pitch-Fund "Band wirkt nicht kompetent" kalibriert) — der Spread selbst wird zusätzlich mit demselben Inflationsfaktor wie die variablen Ausgaben skaliert, damit die *relative* Bandbreite über den Horizont konsistent bleibt.
+- **`savings_rate_pct`-Override ersetzt nur die Erwartungswert-Berechnung**, nicht das Band — die Unsicherheit kommt weiterhin aus der echten Streuung der variablen Ausgaben, nicht aus einer geratenen Bandbreite um eine überschriebene Sparquote.
+- **Einkommensbasis nutzt alle aktiven wiederkehrenden Einnahmen** (nicht nur die eine per `detect_salary_recurring` erkannte "Lohnzahlung"), monatsäquivalent summiert — vollständiger als nur den einen erkannten Lohn, falls z. B. eine zweite regelmässige Einnahmequelle existiert. `salary_growth_pct` wirkt vereinfachend auf diese gesamte Basis, nicht nur auf die einzelne Lohnzahlung — dokumentiert als bewusste Vereinfachung.
+
+**Beobachtung, kein Bug:** Mit den echten Beispieldaten ist die Sparquote aus der Historie sehr dünn (~9.8 %: CHF 2213 Einkommen ./. CHF 1880 variable ./. CHF 115 fixe Ausgaben ≈ CHF 218/Monat). Bei 5 % Inflations-Annahme kippt die 5-Jahres-Prognose ins Negative (CHF −1'317 statt +13'376 bei 0 % Inflation). Das ist eine reale Eigenschaft der Beispieldaten, keine Fehlfunktion — im Pitch aber erwähnenswert, falls mit den Reglern demonstriert wird: bei diesem Datensatz reagiert die Prognose sichtbar empfindlich auf die Inflations-Annahme, was die "Annahmen sind sichtbar und wirken"-Anforderung eher gut zeigt als kaschiert.
+
+**Grenzen:**
+- Das 1-Jahres-Band ist bei den echten Daten recht breit (m=12: CHF −318 bis CHF 5'956 bei erwartet CHF 2'878) — direkte Folge von nur 6 Monaten Ausgabenhistorie mit hoher Varianz, nicht neu kalibriert über die bereits in Feature #4 abgenommene Formel hinaus. Falls das im Pitch "unruhig" wirkt, wäre eine erneute, gezielte Dämpfung eine eigene Entscheidung (wie bei Feature #4's Band-Fix) — hier nicht selbständig verändert, da nicht beauftragt.
+- Kein Zins/Rendite (`interest_applied` bleibt `false`, wird erst in T5 ins `assumptions_used`-Feld geschrieben) — reine Summierung wie in Feature #4.
+- `wait_months`/Korridor-Suche über den sichtbaren Horizont hinaus ist hier noch nicht gebaut — `project_long_term` akzeptiert bewusst eine freie `months`-Zahl (nicht nur 12/60/120), damit T5 bei Bedarf einfach mit einer grösseren Zahl erneut aufrufen kann, ohne diese Funktion zu ändern.
+
+**Erweiterungen:**
+- `LONG_HORIZON_MONTHS` ist ein einfaches `dict[str, int]`, kein `Literal`-gebundener Typ — T5/T7 müssen selbst sicherstellen, dass nur gültige `AssistantHorizon`-Werte reinkommen (Pydantic übernimmt das schon auf Request-Ebene, T1).
+- Aktuell wird die variable Basis (Median/P25/P75) einmalig bei `as_of` berechnet und dann über den ganzen Horizont hochskaliert — eine Erweiterung wäre, saisonale Muster (z. B. höhere Ausgaben im Dezember) zu modellieren, was mit nur 6-12 Monaten Historie aber nicht seriös möglich ist.
