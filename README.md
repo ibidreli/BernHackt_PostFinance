@@ -47,6 +47,10 @@ Starts the API at `http://localhost:8000` (Swagger UI at `/docs`, health check a
 `/health`). The CSV under `/data` is bind-mounted, so swapping the file doesn't require
 a rebuild.
 
+API reference: [`apps/api/API.md`](apps/api/API.md) (endpoints, `$filter` grammar,
+error format). Implementation status, found bugs, and known limitations, kept up to
+date per build step: [`apps/api/STATUS.md`](apps/api/STATUS.md).
+
 For local development without Docker:
 
 ```bash

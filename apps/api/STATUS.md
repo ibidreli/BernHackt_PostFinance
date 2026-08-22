@@ -193,4 +193,14 @@ Lebendes Dokument: pro Teilschritt (T0–T11) ein Satz Stand, plus **Bugs** (gef
 
 ## T11 — Dokumentation
 
-**Stand:** Teilweise — `README.md` enthält Run-Anleitung (`docker compose up`, lokales Setup, Inspect-Tools), `API.md` und das `$metadata`-CSDL-Dokument fehlen noch.
+**Stand:** Fertig — `API.md` (Endpunkt-Referenz), Swagger jetzt mit echten Response-Schemas statt generischem `dict` für `GetForecast`/`Simulate`, `$metadata` schon aus T9 fertig, `README.md` verlinkt beides.
+
+**Bugs:**
+- **Gefunden & gefixt:** `ForecastEnvelope`/`SimulateEnvelope` (neue typisierte Schemas, damit Swagger die echte Antwortform statt `dict` zeigt) liessen sich beim ersten Versuch nicht laden: `NextSalary.date: date = Field(...)` kollidierte mit `from __future__ import annotations` — ein bekannter Pydantic-Stolperstein, wenn Feldname und Typname identisch sind (`date: date`) und gleichzeitig `Field(...)` verwendet wird. Fix: bei diesem einen Feld auf reine Annotation ohne `Field()` zurückgestellt, Beschreibung stattdessen in den Docstring.
+
+**Grenzen:**
+- `GET /odata/RecurringPayments` bleibt bewusst ohne `response_model` (also ohne strikt typisiertes Swagger-Schema) — `$select` kann auf ein beliebiges Feld-Subset projizieren, ein festes Pydantic-Schema würde bei Verwendung von `$select` an der eigenen Validierung scheitern. Stattdessen ausführliche Swagger-`description` mit Beispielen.
+- `$metadata` (CSDL) und `API.md` können bei Schema-Änderungen auseinanderlaufen, da beide von Hand gepflegt werden (siehe T9-Grenzen).
+
+**Erweiterungen:**
+- OpenAPI-Beispiel-Responses (`response_model` deckt nur die Struktur ab, keine Beispielwerte) für noch bessere Swagger-Doku.
