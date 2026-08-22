@@ -167,3 +167,23 @@ Weitere Annahmen siehe T0–T13 unten, jeweils im Kontext.
 
 **Erweiterungen:**
 - `resolve_adjustment`/`_match_merchant` könnten künftig mehrere Kandidaten zurückmelden statt still den kürzesten zu wählen, falls das Frontend eine Auswahl anbieten will.
+
+---
+
+## T6 — Chart-Auswahl-Logik
+
+**Stand:** Fertig — `services/chart_service.py`, live gegen echte `AnswerResult`-Objekte aus T5 getestet, inkl. Konsistenz-Checks zwischen Chart-Zahlen und `facts`-Zahlen.
+
+**Bugs:** Keine gefunden.
+
+**Design-Entscheidungen:**
+- **Chart-Typ hängt nur vom `intent` ab, nie vom `status`.** Das Issue listet `before_after` unter "what_if, no_unless", was zunächst wie eine vierte Bedingung aussieht - interpretiert als "before_after wird für what_if benutzt, auch wenn dessen Status no_unless ist", nicht als eigener Trigger. Live verifiziert: ein erzwungenes `no_unless`-`what_if` (CHF 5000/Monat zusätzliche Ausgabe) bekommt weiterhin `before_after`, nicht `wealth_over_time`.
+- **`time_to_goal` bekommt `goal_progress`, nicht `wealth_over_time`**, obwohl das Issue es in beiden Zeilen der Tabelle listet - Auflösung der Doppel-Zuordnung zugunsten des spezifischeren Charts, das exakt um die drei Korridor-Daten (`goal_date`/`_earliest`/`_latest`) gebaut ist, die T5 für `time_to_goal` ohnehin schon berechnet.
+- **Reines Mapping, keine LLM-Beteiligung** - noch strikter als die Issue-Formulierung "das Modell wählt nur den Typ": hier wählt nicht mal ein Modell, es ist eine feste Funktion von `intent`. Unmöglich, in der Demo den falschen Chart-Typ zu bekommen.
+- **`ChartSeriesPoint` (Präsentationsschicht, T1) bleibt bewusst ein eigener Typ** getrennt von `SeriesPoint` (Rechenschicht, Feature #4/T2) - `_to_chart_points` ist der einzige Übersetzungspunkt dazwischen.
+
+**Grenzen:**
+- Kein Downsampling der Chart-Punkte - bei 10y sind das 121 Punkte, für die drei Chart-Typen bisher unproblematisch (siehe T2s Payload-Grössenabschätzung), aber nicht explizit fürs Charting nochmal geprüft.
+
+**Erweiterungen:**
+- Aktuell keine.

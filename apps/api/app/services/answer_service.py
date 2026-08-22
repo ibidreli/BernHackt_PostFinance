@@ -266,9 +266,9 @@ def answer_time_to_goal(
         target_chf, projected_chf, lt.monthly_expenses_at_horizon_end_chf, monthly_net_savings, float(months)
     )
 
-    goal_date = _first_crossing(lt.series, target_chf, "expected_chf")
-    goal_date_earliest = _first_crossing(lt.series, target_chf, "upper_chf")
-    goal_date_latest = _first_crossing(lt.series, target_chf, "lower_chf")
+    goal_date = first_crossing(lt.series, target_chf, "expected_chf")
+    goal_date_earliest = first_crossing(lt.series, target_chf, "upper_chf")
+    goal_date_latest = first_crossing(lt.series, target_chf, "lower_chf")
 
     levers = compute_levers(classifications, as_of) if status == "no_unless" else []
 
@@ -293,7 +293,7 @@ def answer_time_to_goal(
     )
 
 
-def _first_crossing(series: list[SeriesPoint], target_chf: float, attr: Literal["expected_chf", "lower_chf", "upper_chf"]) -> date | None:
+def first_crossing(series: list[SeriesPoint], target_chf: float, attr: Literal["expected_chf", "lower_chf", "upper_chf"]) -> date | None:
     for point in series:
         if getattr(point, attr) >= target_chf:
             return point.date
