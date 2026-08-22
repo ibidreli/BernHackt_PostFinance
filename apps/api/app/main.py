@@ -10,10 +10,12 @@ from __future__ import annotations
 from collections import Counter
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 
 from app.core.config import CSV_PATH
 from app.data.data_personal import load_raw_transactions
+from app.odata.envelope import ODataVersionMiddleware, install_odata_error_handlers
+from app.odata.metadata import METADATA_XML
 from app.repositories.balance_repository import BalanceRepository
 from app.repositories.transaction_repository import TransactionRepository, monthly_category_stats
 from app.services.classification import classify_transactions
@@ -48,6 +50,15 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+app.add_middleware(ODataVersionMiddleware)
+install_odata_error_handlers(app)
+
+
+@app.get("/odata/$metadata", tags=["odata"], include_in_schema=False)
+def odata_metadata() -> Response:
+    """CSDL service document (T9). The three actual resources
+    (RecurringPayments/GetForecast/Simulate) are wired in T10."""
+    return Response(content=METADATA_XML, media_type="application/xml")
 
 
 @app.get("/health", tags=["meta"])

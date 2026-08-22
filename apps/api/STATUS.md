@@ -133,7 +133,7 @@ Lebendes Dokument: pro Teilschritt (T0–T11) ein Satz Stand, plus **Bugs** (gef
 - **Gefunden & gefixt:** `one_off`-Anpassungen mit positivem `amount_chf` wurden als Einnahme statt Ausgabe behandelt — ein simulierter Autokauf für CHF 30'000 hat den Saldo erhöht statt gesenkt. Fix: `amount_chf` ist bei `one_off` immer eine positive Ausgaben-Magnitude (passend zum Issue-Beispiel "Auto"), keine Vorzeichen-Kodierung mehr.
 
 **Grenzen:**
-- **"Kantine halbieren"-Preset nicht abbildbar:** Das Issue nennt es als dritten Demo-Preset ("Anpassung der variablen Kategorie"), aber keiner der vier spezifizierten Eingriffstypen (`cancel_recurring`, `adjust_recurring`, `add_recurring`, `one_off`) erlaubt eine Topf-2-Kategorie-Anpassung — alle vier wirken auf Topf-1-Recurring-Payments oder Einmalereignisse. Kantine-Besuche landen als hochfrequente, variable Ausgaben in Topf 2, nicht als erkannter Rhythmus in Topf 1. Bewusst nicht mit einem eigenmächtig erfundenen 5. Eingriffstyp gelöst, da das den API-Contract erweitern würde — Rückfrage an euch nötig, siehe Zusammenfassung im Chat.
+- **"Kantine halbieren"-Preset nicht abbildbar** (Rückfrage gestellt, vom Team bestätigt: bleibt bei den 4 spezifizierten Eingriffstypen, kein 5. Typ). Das Issue nennt es als dritten Demo-Preset ("Anpassung der variablen Kategorie"), aber keiner der vier spezifizierten Eingriffstypen (`cancel_recurring`, `adjust_recurring`, `add_recurring`, `one_off`) erlaubt eine Topf-2-Kategorie-Anpassung. Kantine-Besuche landen als hochfrequente, variable Ausgaben in Topf 2, nicht als erkannter Rhythmus in Topf 1.
 - **Band wächst linear über die Zeit** (Tagesrate × Tage), nicht mit abgeschwächter Zeitskalierung (z. B. Wurzel-Skalierung wie bei einem Random Walk). Ehrlich, aber bei 365 Tagen ergibt sich ein sehr breites Band (im Test: CHF -5807 bis +10046) - spiegelt die tatsächliche Kategorie-Varianz der Daten wider, könnte aber in der UI unruhig wirken.
 - **Vorzeichen-Konvention für `diff` bewusst abweichend vom Issue-Beispiel:** Die Beispiel-JSON zeigt `"monthly_chf": -20.90` für ein Szenario, das nach "251 mehr" (positiv) klingt. Wir verwenden durchgehend "positiv = Verbesserung" (Saldo-Verbesserung, mehr Puffer-Tage), konsistent mit `tight_date_shift_days`, statt die mehrdeutige Beispielzahl zu treffen.
 - `diff.cumulative_series` geht von identischen Daten in Baseline- und Szenario-Serie aus (`zip`) - gilt für alle drei Demo-Presets und den one_off-Anwendungsfall, aber nicht allgemein, falls ein Eingriff den Lohn selbst verändert (würde `horizon_end` verschieben).
@@ -158,7 +158,19 @@ Lebendes Dokument: pro Teilschritt (T0–T11) ein Satz Stand, plus **Bugs** (gef
 
 ## T9 — OData-Layer
 
-**Stand:** Noch nicht begonnen — Architektur-Entscheidung steht bereits fest: pragmatisches OData-Subset, `RecurringPayments` als EntitySet, `GetForecast` als Function, `Simulate` als Action.
+**Stand:** Fertig — `$filter`/`$select`/`$orderby`/`$top`/`$skip`, OData-Envelope, OData-Error-Format und das statische `$metadata`-CSDL-Dokument implementiert und end-to-end verifiziert (`docker compose up` + curl).
+
+**Bugs:** Keine gefunden.
+
+**Grenzen:**
+- `$filter`-Parser ist handgeschrieben (nicht die `odata-query`-Library aus der ursprünglichen Planung) — bewusste Entscheidung, siehe Moduldocstring: das begrenzte Grammatik-Subset (eq/ne/gt/ge/lt/le, and/or/not, Klammern, String/Zahl/Bool/Null) liess sich vollständig selbst verifizieren, statt auf die exakte API einer unbekannten Bibliothek zu wetten. Kein `contains`/`startswith`, keine Arithmetik.
+- `$metadata` ist statisch handgeschrieben, nicht aus den Pydantic-Schemas generiert — muss bei Schema-Änderungen manuell nachgezogen werden (im Moduldocstring vermerkt).
+- `OData-Version`-Header und Error-Envelope gelten service-weit (auch für `/health`, nicht nur `/odata/*`) — bewusst einfach gehalten, siehe Moduldocstring.
+- Kein `$batch`, keine Atom/XML-Repräsentation — bewusst ausserhalb des pragmatischen Subsets (siehe frühere OData-Tiefe-Entscheidung).
+
+**Erweiterungen:**
+- `$metadata`-Generator aus den Pydantic-Schemas, falls sich der Contract noch oft ändert.
+- OData-Funktionen wie `contains`/`startswith` im `$filter`-Parser, falls die Frontend-Suche das braucht.
 
 ---
 
