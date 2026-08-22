@@ -125,13 +125,34 @@ Lebendes Dokument: pro Teilschritt (T0–T11) ein Satz Stand, plus **Bugs** (gef
 
 ## T7 — `services/forecast_service.py`
 
-**Stand:** Noch nicht begonnen.
+**Stand:** Fertig — `forecast()` (alle 4 Horizonte) und `simulate()` (alle 4 Eingriffstypen, einzeln und kombiniert) implementiert und gegen den echten Datensatz verifiziert. Zusammen mit T8 gebaut (siehe dort), da der Service dessen Pydantic-Schemas direkt zurückgibt statt eine doppelte interne Repräsentation zu pflegen.
+
+**Bugs:**
+- **Gefunden & gefixt:** `tight_date.days_before_salary` wurde negativ bei Horizonten >30 Tage, weil der beim `as_of` berechnete Lohntermin verwendet wurde statt des Lohntermins, der auf das Engpass-Datum selbst folgt (bei 90d/365d liegt der nächste Lohn oft schon vor dem Engpass). Fix: Lohntermin wird relativ zum Engpass-Datum neu berechnet.
+- **Gefunden & gefixt (der wichtigste Fund):** `recurring_id` war als reiner Merchant-String definiert — aber `RecurringPayment.merchant` ist **nicht eindeutig** (13 Merchant-Strings wie "LASTSCHRIFT", "PAYPAL", "MIGROS" bezeichnen je 2-4 verschiedene Recurring-Payment-Gruppen mit unterschiedlicher Kategorie/Flow). Beim Testen von `simulate()` löschte das Canceln von Netflix stillschweigend auch eine völlig unabhängige "LASTSCHRIFT"-Zahlung, weil beide beim Dict-Aufbau denselben Schlüssel teilten. Fix: neue `recurring_payment_id()`-Funktion in T3, die Merchant+Kategorie+Flow zu einer eindeutigen ID kombiniert; überall als `recurring_id` verwendet.
+- **Gefunden & gefixt:** `one_off`-Anpassungen mit positivem `amount_chf` wurden als Einnahme statt Ausgabe behandelt — ein simulierter Autokauf für CHF 30'000 hat den Saldo erhöht statt gesenkt. Fix: `amount_chf` ist bei `one_off` immer eine positive Ausgaben-Magnitude (passend zum Issue-Beispiel "Auto"), keine Vorzeichen-Kodierung mehr.
+
+**Grenzen:**
+- **"Kantine halbieren"-Preset nicht abbildbar:** Das Issue nennt es als dritten Demo-Preset ("Anpassung der variablen Kategorie"), aber keiner der vier spezifizierten Eingriffstypen (`cancel_recurring`, `adjust_recurring`, `add_recurring`, `one_off`) erlaubt eine Topf-2-Kategorie-Anpassung — alle vier wirken auf Topf-1-Recurring-Payments oder Einmalereignisse. Kantine-Besuche landen als hochfrequente, variable Ausgaben in Topf 2, nicht als erkannter Rhythmus in Topf 1. Bewusst nicht mit einem eigenmächtig erfundenen 5. Eingriffstyp gelöst, da das den API-Contract erweitern würde — Rückfrage an euch nötig, siehe Zusammenfassung im Chat.
+- **Band wächst linear über die Zeit** (Tagesrate × Tage), nicht mit abgeschwächter Zeitskalierung (z. B. Wurzel-Skalierung wie bei einem Random Walk). Ehrlich, aber bei 365 Tagen ergibt sich ein sehr breites Band (im Test: CHF -5807 bis +10046) - spiegelt die tatsächliche Kategorie-Varianz der Daten wider, könnte aber in der UI unruhig wirken.
+- **Vorzeichen-Konvention für `diff` bewusst abweichend vom Issue-Beispiel:** Die Beispiel-JSON zeigt `"monthly_chf": -20.90` für ein Szenario, das nach "251 mehr" (positiv) klingt. Wir verwenden durchgehend "positiv = Verbesserung" (Saldo-Verbesserung, mehr Puffer-Tage), konsistent mit `tight_date_shift_days`, statt die mehrdeutige Beispielzahl zu treffen.
+- `diff.cumulative_series` geht von identischen Daten in Baseline- und Szenario-Serie aus (`zip`) - gilt für alle drei Demo-Presets und den one_off-Anwendungsfall, aber nicht allgemein, falls ein Eingriff den Lohn selbst verändert (würde `horizon_end` verschieben).
+- Kategorie-Median für Perzentil-Summierung geht von Unabhängigkeit zwischen Kategorien aus (siehe Moduldocstring) - Standard-Vereinfachung, keine Kovarianz-Berechnung.
+
+**Erweiterungen:**
+- 5. Eingriffstyp für Topf-2-Kategorie-Anpassungen, falls "Kantine halbieren" wörtlich gebraucht wird.
+- Wurzel-Zeitskalierung für die Bandbreite bei langen Horizonten.
+- `diff.cumulative_series`-Alignment über Datum statt Listenposition, für den allgemeinen Fall unterschiedlicher `horizon_end`.
 
 ---
 
 ## T8 — `schemas/forecast.py`
 
-**Stand:** Noch nicht begonnen.
+**Stand:** Fertig (zusammen mit T7 gebaut) — alle Pydantic-Schemas exakt nach API-Contract, inkl. Discriminated Union für die vier Eingriffstypen (verifiziert: `SimulateRequest` parst alle vier Typen korrekt).
+
+**Grenzen:**
+- `recurring_id: str` statt `int` (DB-PK) — konsistent mit der "keine DB"-Entscheidung, siehe T2.
+- `Assumptions.notes: list[str]` ist eine Ergänzung über das Issue-Beispiel hinaus (freitextige Edge-Case-Hinweise statt ein Boolean pro Fall) - bewusste, dokumentierte Erweiterung.
 
 ---
 

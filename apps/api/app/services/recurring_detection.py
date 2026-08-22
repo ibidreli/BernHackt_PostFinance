@@ -76,6 +76,24 @@ def group_key(t: Transaction) -> tuple[str, str | None, str]:
     return (_canonical_merchant_key(t.merchant), t.category_main, t.flow)
 
 
+def recurring_payment_id(rp: RecurringPayment) -> str:
+    """Stable, unique identifier for a RecurringPayment - used as the
+    API-facing `recurring_id` (T7/T8).
+
+    `rp.merchant` alone is NOT unique: verified against real data that 13
+    different merchant strings (e.g. "LASTSCHRIFT", "PAYPAL", "MIGROS" -
+    generic fallback names, see T1) each label 2-4 *different*
+    RecurringPayment groups that only differ by category/flow. Using
+    `merchant` alone as an id silently collapsed unrelated recurring
+    payments together (found via testing `simulate()`: cancelling Netflix
+    also silently removed an unrelated "LASTSCHRIFT" payment). This
+    mirrors `group_key`'s tuple exactly, so it's guaranteed unique by
+    construction.
+    """
+    merchant, category_main, flow = (rp.merchant, rp.category_main, rp.flow)
+    return f"{merchant}::{category_main or ''}::{flow}"
+
+
 def _collapse_same_day(transactions: list[Transaction]) -> list[Transaction]:
     """Collapse multiple same-day bookings within a group into one.
 
@@ -186,8 +204,8 @@ def detect_recurring_payments(
     return results
 
 
-def detect_salary_day(recurring_payments: list[RecurringPayment]) -> int | None:
-    """Salary day: `day_of_month` of the largest recurring monthly income.
+def detect_salary_recurring(recurring_payments: list[RecurringPayment]) -> RecurringPayment | None:
+    """The salary itself: the largest *active* recurring monthly income.
 
     Simple heuristic (issue: "wiederkehrende Einnahme, gleicher Tag im
     Monat") - salary is reliably the biggest regular paycheck, so
@@ -216,4 +234,10 @@ def detect_salary_day(recurring_payments: list[RecurringPayment]) -> int | None:
     ]
     if not candidates:
         return None
-    return max(candidates, key=lambda rp: rp.amount_chf).day_of_month
+    return max(candidates, key=lambda rp: rp.amount_chf)
+
+
+def detect_salary_day(recurring_payments: list[RecurringPayment]) -> int | None:
+    """`day_of_month` of the detected salary - see `detect_salary_recurring`."""
+    salary = detect_salary_recurring(recurring_payments)
+    return salary.day_of_month if salary else None

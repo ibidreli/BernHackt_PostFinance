@@ -17,6 +17,7 @@ from app.data.data_personal import load_raw_transactions
 from app.repositories.balance_repository import BalanceRepository
 from app.repositories.transaction_repository import TransactionRepository, monthly_category_stats
 from app.services.classification import classify_transactions
+from app.services.forecast_service import forecast
 from app.services.recurring_detection import detect_recurring_payments, detect_salary_day
 
 # T10 will mount the OData forecast routes here, e.g.:
@@ -89,4 +90,28 @@ def health(request: Request) -> dict:
         "topf_counts": dict(Counter(c.topf for c in classifications)),
         "latest_balance": latest_balance.model_dump(mode="json") if latest_balance else None,
         "category_stats_computed": len(category_stats),
+        "forecast_next_salary": _forecast_summary(request, "next_salary"),
+    }
+
+
+def _forecast_summary(request: Request, horizon: str) -> dict | None:
+    """Proves T7 end-to-end: builds a real forecast through the full
+    pipeline (T1-T7) and summarizes it, the same way T10's routes will."""
+    try:
+        f = forecast(
+            request.app.state.transaction_repository.all(),
+            request.app.state.recurring_payments,
+            request.app.state.classifications,
+            request.app.state.balance_repository,
+            horizon=horizon,
+        )
+    except Exception as exc:  # noqa: BLE001 - health check should never 500
+        return {"error": str(exc)}
+    return {
+        "horizon_end": f.horizon_end.isoformat(),
+        "opening_balance_chf": f.opening_balance_chf,
+        "free_to_spend": f.free_to_spend.model_dump(mode="json"),
+        "tight_date": f.tight_date.model_dump(mode="json") if f.tight_date else None,
+        "n_known_payments": len(f.known_payments),
+        "n_series_points": len(f.series),
     }
