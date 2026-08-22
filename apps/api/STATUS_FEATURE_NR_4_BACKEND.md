@@ -159,6 +159,37 @@ Band-Breite wuchs linear mit der Zeit (Tagesrate × Tage) → bei 365 Tagen Span
 
 ---
 
+## QA-Runde nach den Pitch-Fixes (Endpunkte end-to-end gegen `docker compose up`)
+
+**Systematisch gegen die Akzeptanzkriterien der Issue getestet**, nicht nur Stichproben. Ergebnis im Detail:
+
+**✅ Bestätigt korrekt:**
+- Alle 4 Horizonte strukturell valide, `series[-1]` immer exakt gleich `free_to_spend` (Konsistenz-Invariante hält).
+- Band ist exakt 0-breit an Tag 0 (`as_of`), wächst nur durch variable Ausgaben — Fixkosten verschieben alle drei Kurven gleich, verbreitern nichts.
+- `tight_date` verifiziert aus der **unteren** Bandgrenze: am gefundenen Datum war der Erwartungswert noch positiv (CHF 756), nur die untere Grenze war unter dem Puffer (-50) — bestätigt, dass wirklich die pessimistische Kurve zählt.
+- Ausreisser sauber ausgeschlossen und in `assumptions.excluded_outliers` benannt (Decathlon, Garmin, Gurtenfestival etc.).
+- Alle 4 Eingriffstypen einzeln und kombiniert exakt korrekt (`diff.monthly_chf`/`total_at_horizon_chf` bis auf den Rappen nachgerechnet und bestätigt).
+- 6 Fehlerpfade geprüft (kein Saldo, ungültiger Horizont, kaputtes JSON, unbekannter Eingriffstyp, fehlendes Pflichtfeld, unbekannte `recurring_id`) — alle liefern saubere OData-Fehler statt Absturz.
+- **Eigener Testfehler dabei gefunden und korrigiert**, bevor er fälschlich als API-Bug gemeldet wurde: Shell-Variablen persistieren nicht zwischen Bash-Aufrufen — ein erster "kombinierter Eingriffe"-Test schlug deshalb fehl (leere `recurring_id`), nicht wegen der API.
+
+**⚠️ Gefunden, noch offen — Akzeptanzkriterium nicht erfüllbar mit dem aktuellen Sample-Datensatz:**
+"Die Jahresansicht zeigt 13. Monatslohn, Steuertermine und Quartalsrechnungen als sichtbare Ausschläge" — nach den Pitch-Fixes zeigt die 365d-Ansicht nur noch 7 rein monatliche Positionen, keine Quartals-/Jahres-Ausschläge mehr (vorher: 6 quarterly, teils Fantasie-Treffer wie oben beschrieben).
+
+Tiefer geprüft, ob das nachträglich reparierbar ist: **Nein, mit `data_personal.csv` nicht** - es handelt sich um eine echte Datenlücke, keinen Code-Fehler:
+- `STEUERVERWALTUNG`-Buchungen im Datensatz sind tatsächlich chaotisch (Beträge von CHF 20 bis CHF 2500, Abstände von 7 bis 330 Tagen, sogar eine Rückerstattung dazwischengemischt) — kein verstecktes sauberes 3×/Jahr-Muster, das eine bessere Erkennung retten könnte.
+- `TOURING` (Lohn) zeigt **keinen** 13.-Monatslohn-Sprung im Dezember (Dez. 2024/2025 sind sogar unterdurchschnittlich, nicht überdurchschnittlich).
+- Keine BKW-artige, sauber quartalsweise wiederkehrende Rechnung im gesamten Datensatz gefunden.
+
+**Konsequenz:** Der Algorithmus ist korrekt und würde ein echtes Quartals-/Jahresmuster erkennen (das war ja gerade Zweck der beiden Fixes) — es gibt in diesem konkreten Sample-Datensatz schlicht keins zu finden. Für den Pitch zwei Optionen: (a) auf die "echten" Daten warten/hoffen, dass die eine saubere Quartalsrechnung enthalten, oder (b) eine synthetische Quartalsposition (z. B. eine BKW-artige Buchung) manuell in die Demo-CSV einfügen, bevor der Datensatz geladen wird.
+
+**Kleinere, nicht-fatale Robustheitslücken in `RecurringPayments`:**
+- `$select` mit nicht existierendem Feldnamen liefert `null` statt eines Fehlers (z. B. `$select=tippfehlr` → `{"tippfehlr": null}`).
+- `$filter` auf ein nicht existierendes Feld liefert eine leere Liste statt eines Fehlers (könnte einen Tippfehler als "keine Treffer" maskieren).
+
+Beides ist harmlos für die Demo (kein Crash, keine falschen Zahlen), aber bei einem Tippfehler in einem Frontend-Query würde man das nicht sofort bemerken.
+
+---
+
 ## T8 — `schemas/forecast.py`
 
 **Stand:** Fertig (zusammen mit T7 gebaut) — alle Pydantic-Schemas exakt nach API-Contract, inkl. Discriminated Union für die vier Eingriffstypen (verifiziert: `SimulateRequest` parst alle vier Typen korrekt).
