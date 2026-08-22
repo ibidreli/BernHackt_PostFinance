@@ -12,7 +12,7 @@ Stand: 22.08.2026. Detail-Logs: `apps/api/STATUS_FEATURE_NR_4_BACKEND.md` (T0–
 |---|---|---|---|
 | [[Zukunftsprognose & Simulation]] | ✅ fertig, QA-getestet | ✅ gebaut | Backend auf `main`; UI auf `origin/feature/prognosis` |
 | [[Abo-Radar]] | 🔨 in Arbeit | ❌ | **uncommitted auf `main`** (subscriptions-Route/-Schema/-Service, metadata.py, main.py) |
-| [[Future-Me Chatbot]] | ✅ gebaut | ✅ gebaut | `origin/feature/prognosis` (Pipeline, Tests) + `origin/5-feature-future-me-chatbot-…` (OpenAI-Setup, .env) |
+| [[Future-Me Chatbot]] | ✅ fertig, live gegen echte OpenAI-API getestet | ⚠️ inkompatibel (ruft alte Endpunkte) | Backend auf `5-feature-future-me-chatbot-szenario-assistent` |
 | [[Kategorien-Explorer]] | ❌ nur leere Platzhalter (`graph.py`, `graph_service.py`, `schemas/graph.py`) | ❌ | Branch `origin/3-…` existiert, ist aber identisch mit `main` |
 
 ## Was auf `main` liegt
@@ -26,6 +26,7 @@ Kompletter Prognose-Backend-Stack ([[Datenmodell & Repositories]], [[Recurring-D
 - **Fehlende Dinge, die Issues fordern:** Unit-Tests für Forecast/Klassifikation (nur Inspect-Skripte vorhanden), Frontend-Tests generell (Vitest installiert, `skipTests: true`), `is_transfer`-Erkennung (bewusst nicht verdrahtet), "Kantine halbieren"-Szenario (bewusst nicht abbildbar, Team-Entscheid).
 - **Robustheits-Kleinigkeiten:** `$select`/`$filter` auf nicht existierende Felder liefern `null`/leere Liste statt Fehler; `OData-Version`-Header gilt auch für `/health`.
 - **Uncommitted:** die komplette [[Abo-Radar]]-Backend-Implementierung plus dieser Doku-Vault (`doku/`).
+- **[[Future-Me Chatbot]]: Frontend inkompatibel.** Der `5-feature-…`-Branch hatte beim Merge mit `main` einen echten Konflikt mit einer zweiten, unabhängigen Chatbot-Implementierung (`origin/feature/prognosis`, regelbasiert statt LLM, dort selbst als Platzhalter markiert). Entschieden: die getestete LLM-Implementierung bleibt. Das mitgemergte Frontend ruft aber noch die alten Endpunkte (`/api/v1/Ask` statt `/api/v1/assistant/ask`) — Anpassung offen.
 
 ## Abgeschlossene Meilensteine (Git-Historie)
 
