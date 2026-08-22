@@ -125,3 +125,66 @@ Vollständige Liste mit Begründung in [STATUS.md](STATUS.md). Die wichtigsten:
 - `$metadata` ist statisch, nicht aus den Schemas generiert.
 - `GetForecast` nutzt Query-Parameter statt strikter OData-Klammer-Syntax (`GetForecast(horizon='...')`).
 - Band wächst linear über die Zeit, nicht mit gedämpfter Zeitskalierung.
+
+---
+
+# Assistenz (`/api/v1/assistant`)
+
+Plain REST, nicht OData: die beiden Endpunkte sind kein Entity-Set und keine
+typisierte Funktion über dem Datenmodell, sondern eine konversationelle Operation.
+
+## `POST /api/v1/assistant/ask`
+
+Beantwortet genau drei Fragetypen. Alles andere → `status: "unsupported"`, ohne
+Rateversuch.
+
+| `intent`        | Frage                                       | Chart-Typ           |
+| --------------- | ------------------------------------------- | ------------------- |
+| `affordability` | "Kann ich mir ein Auto für 30'000 leisten?"  | `wealth_over_time`  |
+| `what_if`       | "Was wäre, wenn ich Gastronomie halbiere?"   | `before_after`      |
+| `time_to_goal`  | "Wann habe ich 20'000 zusammen?"             | `goal_progress`     |
+
+`status` ist nie ein blosses Ja oder Nein: `yes` (Ziel erreichbar, Restpuffer
+≥ 3 Monatsausgaben), `tight` (erreichbar, Puffer darunter, mit Wartezeit),
+`no_unless` (Fehlbetrag, nötiger Monatsbetrag, Hebel) — dazu
+`needs_clarification` und `unsupported`.
+
+Horizonte: `present` (aktuelle Lohnperiode, die einzige Stufe ohne Annahmen —
+die Kurve kommt direkt aus `GetForecast(horizon=next_salary)`), `1y`, `5y`, `10y`.
+Ein Horizont im Fragetext schlägt den Umschalter; der tatsächlich verwendete
+steht als `horizon` in der Antwort.
+
+**Wo gerechnet wird.** Ausschliesslich in `forecast_service` — derselben Funktion,
+die auch der Slider aus Feature 2 aufruft. `forecast_service` endet bei 365 Tagen;
+für 5 und 10 Jahre extrapoliert `assistant_service` dessen Monatsraten unter den
+drei sichtbaren Annahmen weiter (Formel im Modul-Docstring). Kein Zins, keine
+Rendite: `assumptions_used.interest_applied` ist immer `false`.
+
+**Wo nicht gerechnet wird.** Die Extraktion (`intent_service`) liefert nur
+Parameter, die Formulierung baut den Text aus `facts` per Template. `_verify_numbers`
+prüft danach, dass jeder CHF-Betrag im Text einem Feld aus `facts` oder `levers`
+entspricht; bei Abweichung greift die neutrale Template-Formulierung. Die
+äquivalenten LLM-Contracts liegen versioniert unter [`prompts/`](../../prompts/).
+
+**Hebel** stammen ausschliesslich aus variablen Kategorien (Topf 2), abzüglich der
+nicht disponiblen (`Steuern`, `Versicherungen`, `Sonstige Geldtransfers`) — "spar
+bei der Krankenkasse" ist kein Rat. `potential_chf` ist pauschal 50 % der Kategorie.
+
+**Rückfragen** sind fest definiert, nicht vom Modell erfunden, und maximal eine pro
+Anfrage: fehlender Betrag, und Bar/Leasing ab CHF 10'000. Wird eine Rückfrage über
+`context.pending_clarification` beantwortet, wird sie nicht erneut gestellt.
+
+## `GET /api/v1/assistant/suggestions?horizon=5y`
+
+Drei Vorschlagsfragen als Chips, abhängig vom Horizont.
+
+## Bekannte Grenzen
+
+- Extraktion ist regelbasiert (Regex), nicht LLM-gestützt — gleicher Contract,
+  kein API-Key, kein Timeout in der Live-Demo. `prompts/` dokumentiert den
+  LLM-Ersatz; `source` ist entsprechend `"template"`.
+- Leasing vereinfacht: 20 % Anzahlung, Rest als monatliche Rate über den Horizont
+  (in `assumptions_used.notes` benannt).
+- Folgefragen mit Bezug auf die vorherige Antwort ("und wenn ich 2 Jahre länger
+  warte?") sind nicht im Scope.
+- Die `tight`-Schwelle von 3 Monatsausgaben ist ein Startwert, nicht kalibriert.

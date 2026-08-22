@@ -11,7 +11,9 @@ from collections import Counter
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.routes.assistant import router as assistant_router
 from app.api.routes.forecast import router as forecast_router
 from app.core.config import CSV_PATH
 from app.data.data_personal import load_raw_transactions
@@ -50,6 +52,13 @@ app = FastAPI(
 app.add_middleware(ODataVersionMiddleware)
 install_odata_error_handlers(app)
 app.include_router(forecast_router, prefix="/odata")
+app.include_router(assistant_router, prefix="/api/v1/assistant")
+
+# Read-only service over a local CSV, no auth and no cookies - the
+# Angular dev server (a different origin) needs to reach it directly.
+app.add_middleware(
+    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
+)
 
 
 @app.get("/odata/$metadata", tags=["odata"], include_in_schema=False)

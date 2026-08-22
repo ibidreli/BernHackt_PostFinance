@@ -1,0 +1,224 @@
+<div class="mx-auto flex h-full max-w-6xl flex-col gap-4 lg:flex-row">
+  <!-- Chat -->
+  <section class="flex min-w-0 flex-1 flex-col gap-4" aria-label="Chat">
+    <header class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h1 class="text-lg font-semibold">Assistenz</h1>
+        <p class="text-sm text-muted-foreground">
+          Anschaffung, Was-wäre-wenn, Sparziel.
+        </p>
+      </div>
+
+      <div role="tablist" aria-label="Zeithorizont" class="tabs tabs-box bg-surface">
+        @for (horizon of horizons; track horizon.value) {
+          <button
+            type="button"
+            role="tab"
+            class="tab"
+            [class.tab-active]="assistant.horizon() === horizon.value"
+            [attr.aria-selected]="assistant.horizon() === horizon.value"
+            (click)="setHorizon(horizon.value)"
+          >
+            {{ horizon.label }}
+          </button>
+        }
+      </div>
+    </header>
+
+    <div #transcript class="flex-1 space-y-4 overflow-y-auto pr-1" aria-live="polite">
+      @for (message of assistant.messages(); track $index) {
+        @if (message.role === 'user') {
+          <div data-question class="chat chat-end animate-rise-in">
+            <div class="chat-bubble bg-primary text-pf-teal">{{ message.text }}</div>
+          </div>
+        } @else {
+          <article class="animate-rise-in rounded-xl border border-border bg-surface p-4">
+            <div class="flex items-start justify-between gap-3">
+              <span class="rounded-full px-2 py-0.5 text-xs font-medium" [class]="badge(message.status).classes">
+                {{ badge(message.status).label }}
+              </span>
+              @if (message.facts) {
+                <span class="text-xs text-muted-foreground">
+                  {{ message.facts.months_remaining }}
+                  {{ message.facts.months_remaining === 1 ? 'Monat' : 'Monate' }} ·
+                  {{ chf(message.facts.projected_chf) }}
+                </span>
+              }
+            </div>
+
+            <p class="mt-2 leading-relaxed">{{ message.answer }}</p>
+
+            <!-- Rückfrage: Buttons statt Tippen, maximal eine pro Anfrage -->
+            @if (message.clarification) {
+              <div class="mt-3 flex flex-wrap gap-2">
+                @for (option of message.clarification.options; track option) {
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline"
+                    (click)="assistant.answerClarification(option)"
+                  >
+                    {{ option }}
+                  </button>
+                }
+              </div>
+            }
+
+            @if (message.chart) {
+              <div class="mt-4">
+                <app-assistant-chart [spec]="message.chart" />
+              </div>
+            }
+
+            @if (message.levers.length) {
+              <div class="mt-4">
+                <h2 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Hebel</h2>
+                <ul class="mt-2 space-y-1.5">
+                  @for (lever of message.levers; track lever.category) {
+                    <li class="flex items-center gap-3 text-sm">
+                      <span class="w-28 shrink-0 truncate">{{ lever.category }}</span>
+                      <span class="h-1.5 flex-1 overflow-hidden rounded-full bg-border">
+                        <span
+                          class="block h-full rounded-full bg-secondary transition-[width] duration-500"
+                          [style.width.%]="(lever.monthly_avg_chf / message.levers[0].monthly_avg_chf) * 100"
+                        ></span>
+                      </span>
+                      <span class="shrink-0 whitespace-nowrap text-right text-xs text-muted-foreground">
+                        {{ chf(lever.monthly_avg_chf) }}/Mt · −{{ chf(lever.potential_chf) }}
+                      </span>
+                    </li>
+                  }
+                </ul>
+              </div>
+            }
+
+            <!-- Annahmen im Klartext unter jeder Antwort -->
+            <p class="mt-4 border-t border-border pt-3 text-xs text-muted-foreground">
+              Lohnwachstum {{ message.assumptions_used.salary_growth_pct }} %, Inflation
+              {{ message.assumptions_used.inflation_pct }} %, Sparquote
+              {{ message.assumptions_used.savings_rate_pct }} %. Keine Zins- oder Renditeannahme.
+              @for (note of message.assumptions_used.notes; track note) {
+                {{ note }}
+              }
+            </p>
+          </article>
+        }
+      } @empty {
+        <div class="rounded-xl border border-dashed border-border p-6 text-sm text-muted-foreground">
+          Stell eine Frage oder wähl einen Vorschlag. Beträge stammen immer aus der Prognose, nie aus dem Sprachmodell.
+        </div>
+      }
+
+      @if (assistant.pending()) {
+        <div class="flex items-center gap-2 text-sm text-muted-foreground">
+          <span class="loading loading-dots loading-sm"></span> rechnet …
+        </div>
+      }
+    </div>
+
+    <!-- Vorschlags-Chips -->
+    <div class="flex flex-wrap gap-2">
+      @for (suggestion of assistant.suggestions(); track suggestion) {
+        <button
+          type="button"
+          class="btn btn-xs rounded-full border-border bg-surface font-normal hover:bg-primary hover:text-pf-teal"
+          (click)="send(suggestion)"
+        >
+          {{ suggestion }}
+        </button>
+      }
+    </div>
+
+    <form class="flex gap-2" (submit)="$event.preventDefault(); send()">
+      <input
+        class="input flex-1 bg-surface"
+        aria-label="Frage"
+        placeholder="Kann ich mir in 5 Jahren ein Auto für 30'000 leisten?"
+        [value]="draft()"
+        (input)="draft.set($any($event.target).value)"
+      />
+      <button type="submit" class="btn btn-primary" [disabled]="assistant.pending() || !draft().trim()">
+        Fragen
+      </button>
+    </form>
+  </section>
+
+  <!-- Annahmen -->
+  <aside class="w-full shrink-0 space-y-5 rounded-xl border border-border bg-surface p-4 lg:w-72" aria-label="Annahmen">
+    <div>
+      <h2 class="text-sm font-semibold">Annahmen</h2>
+      <p class="mt-1 text-xs text-muted-foreground">
+        Kein Orakel, ein Szenariorechner. Die Werte stehen unter jeder Antwort.
+      </p>
+    </div>
+
+    <label class="block">
+      <span class="flex justify-between text-sm">
+        Lohnwachstum <span class="tabular-nums">{{ assistant.salaryGrowthPct() }} %</span>
+      </span>
+      <input
+        type="range"
+        class="range range-primary range-xs mt-2"
+        min="0"
+        max="5"
+        step="0.5"
+        [value]="assistant.salaryGrowthPct()"
+        (input)="assistant.salaryGrowthPct.set(+$any($event.target).value)"
+      />
+    </label>
+
+    <label class="block">
+      <span class="flex justify-between text-sm">
+        Inflation <span class="tabular-nums">{{ assistant.inflationPct() }} %</span>
+      </span>
+      <input
+        type="range"
+        class="range range-primary range-xs mt-2"
+        min="0"
+        max="5"
+        step="0.5"
+        [value]="assistant.inflationPct()"
+        (input)="assistant.inflationPct.set(+$any($event.target).value)"
+      />
+    </label>
+
+    <label class="block">
+      <span class="flex justify-between text-sm">
+        Sparquote
+        <span class="tabular-nums">
+          {{ assistant.savingsRatePct() === null ? 'aus Historie' : assistant.savingsRatePct() + ' %' }}
+        </span>
+      </span>
+      <input
+        type="range"
+        class="range range-primary range-xs mt-2"
+        min="0"
+        max="50"
+        step="1"
+        [value]="assistant.savingsRatePct() ?? 0"
+        (input)="assistant.savingsRatePct.set(+$any($event.target).value)"
+      />
+      @if (assistant.savingsRatePct() !== null) {
+        <button
+          type="button"
+          class="mt-1 text-xs text-muted-foreground underline"
+          (click)="assistant.savingsRatePct.set(null)"
+        >
+          zurück auf Historie
+        </button>
+      }
+    </label>
+
+    <button
+      type="button"
+      class="btn btn-sm btn-outline w-full"
+      [disabled]="assistant.pending()"
+      (click)="assistant.replay()"
+    >
+      Neu rechnen
+    </button>
+
+    <p class="border-t border-border pt-3 text-xs text-muted-foreground">
+      Keine Rendite, kein Zins. Reine Summierung über die erkannten Fixkosten und den variablen Median.
+    </p>
+  </aside>
+</div>

@@ -12,6 +12,11 @@ export const routes: Routes = [
         title: 'Dashboard',
         loadComponent: () => import('./pages/dashboard/dashboard').then((m) => m.Dashboard),
       },
+      {
+        path: 'assistant',
+        title: 'Assistenz',
+        loadComponent: () => import('./pages/assistant/assistant').then((m) => m.AssistantPage),
+      },
     ],
   },
 ];

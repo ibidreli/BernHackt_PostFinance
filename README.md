@@ -60,6 +60,15 @@ pip install -r requirements.txt
 CSV_PATH=../../data/data_personal.csv uvicorn app.main:app --reload
 ```
 
+Tests:
+
+```bash
+cd apps/api && pip install -r requirements-dev.txt && CSV_PATH=../../data/data_personal.csv python -m pytest
+```
+
+The Angular dev server proxies `/api` to `http://localhost:8000`
+(`apps/web/proxy.conf.json`), so the frontend stays origin-relative.
+
 ### Data
 
 Mock data is provided in `/data` as `.csv` files
