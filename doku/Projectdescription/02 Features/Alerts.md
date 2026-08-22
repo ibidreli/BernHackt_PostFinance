@@ -8,6 +8,9 @@ issue: 8
 
 Spec: [[Issue 8 – Alerts]] · baut auf der Klassifikation aus [[Issue 4 – Zukunftsprognose]] auf (`outlier`-Topf, `monthly_category_stats`, `group_key`)
 
+> [!important] Soll-Änderung (22.08.2026, [[Sollstatus]]): keine eigene Seite
+> Die drei Alert-Typen, Schwellen, Guards und das Backend-Schema unten bleiben unverändert gültig. **Gestrichen ist nur die eigene Frontend-Seite** (Route `/alerts`, KPI-Kacheln, Kartenliste): Alerts erscheinen stattdessen dort, wo die Daten sichtbar sind — als Severity-Ringe/Badges an Knoten im [[Kategorien-Explorer]] (inkl. Filter "Nur Auffälligkeiten" und "Warum sehe ich das?"-Satz im Detailpanel) und als Warn-Marker an `known_payments` in der Prognose. Der Abschnitt "Frontend-Seite" unten ist damit überholt.
+
 ## Die Idee
 
 **Niemand liest 5'000 Buchungen.** Die Seite «Auffälligkeiten» hebt die wenigen Ereignisse hervor, die einen Blick wert sind — doppelte Abbuchungen, ungewöhnlich grosse Zahlungen, Ausgaben-Spitzen in einer Kategorie — damit der User nicht jede Transaktion einzeln durchgehen muss. Bewusst eine eigene View: Alerts sind eine priorisierte Liste, kein Filter über der Transaktionstabelle.

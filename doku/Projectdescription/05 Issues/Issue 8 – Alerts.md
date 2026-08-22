@@ -6,6 +6,8 @@ issue: 8
 
 # Issue #8 — Alerts (Auffälligkeiten-Radar)
 
+> [!important] Soll-Änderung (22.08.2026, [[Sollstatus]]): keine eigene Seite mehr — Backend-Spec unverändert, die Alerts werden in [[Kategorien-Explorer]] (Ringe/Filter) und Prognose (Marker) integriert; Route `/alerts` entfällt.
+
 GitHub-Issue: *noch nicht erstellt* · Labels: `feature`, `frontend`, `backend`, `priority:medium` · Epic: Beyond the List · Abhängigkeit: Klassifikation/`outlier` aus [[Issue 4 – Zukunftsprognose]] wiederverwenden, nicht neu bauen · Feature-Note: [[Alerts]]
 
 ## Kern der Spec

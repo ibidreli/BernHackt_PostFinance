@@ -4,19 +4,19 @@ tags: [projekt, status]
 
 # Projektstatus
 
-Stand: 22.08.2026, nach dem Merge von PR #12 (Future-Me Chatbot) und der zweiten Doku-/Code-Konsolidierung. Detail-Logs: `apps/api/STATUS_FEATURE_NR_4_BACKEND.md` (T0–T11 + QA-Runde) und `apps/api/STATUS_FEATURE_NR_5_BACKEND.md` (T0–T13, jetzt auf `main`).
+Stand: 22.08.2026, nach dem Merge von PR #12 (Future-Me Chatbot) und der zweiten Doku-/Code-Konsolidierung. Das Zielbild dazu steht in [[Sollstatus]]. Detail-Logs: `apps/api/STATUS_FEATURE_NR_4_BACKEND.md` (T0–T11 + QA-Runde) und `apps/api/STATUS_FEATURE_NR_5_BACKEND.md` (T0–T13, jetzt auf `main`).
 
 ## Übersicht nach Feature
 
-| Feature | Backend | Frontend | Wo |
-|---|---|---|---|
-| [[Zukunftsprognose & Simulation]] | ✅ fertig, QA-getestet | ✅ fertig (Forecast-Seite mit Chart, Horizonten, Simulations-Panel) | alles auf `main` |
-| [[Future-Me Chatbot]] | ✅ fertig: LLM-Pipeline mit OpenAI (PR #12), `cached`-Modus als Offline-Fallback | ✅ fertig — am 22.08. auf die neuen `/assistant/*`-Endpunkte umgestellt | alles auf `main` |
-| [[Kategorien-Explorer]] | ✅ fertig (PR #10): `graph_service`, Merchant-Normalisierung, OData- **und** REST-Routen | ❌ kein Consumer, keine Route | Backend auf `main` |
-| [[Abo-Radar]] | ⚠️ **Quellcode verloren** — war nur uncommitted, nie eingecheckt; nur `.pyc`-Bytecode übrig | ❌ leeres Verzeichnis `pages/abo-radar/`, keine Route | Neubau nach [[Subscription-Service]] nötig |
-| [[Alerts]] | ❌ nicht begonnen (Definition steht) | ❌ | [[Issue 8 – Alerts]] ist die Spec |
+| Feature                           | Backend                                                                                     | Frontend                                                               | Wo                                         |
+| --------------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------ |
+| [[Zukunftsprognose & Simulation]] | ✅ fertig, QA-getestet                                                                       | ✅ fertig (Forecast-Seite mit Chart, Horizonten, Simulations-Panel)     | alles auf `main`                           |
+| [[Future-Me Chatbot]]             | ✅ fertig: LLM-Pipeline mit OpenAI (PR #12), `cached`-Modus als Offline-Fallback             | ✅ fertig — am 22.08. auf die neuen `/assistant/*`-Endpunkte umgestellt | alles auf `main`                           |
+| [[Kategorien-Explorer]]           | ✅ fertig (PR #10): `graph_service`, Merchant-Normalisierung, OData- **und** REST-Routen     | ✅ erste Version (PR #13): Explorer auf `/` mit D3, Monats-Slider, Delta-Modus                                           | Backend auf `main`                         |
+| [[Abo-Radar]]                     | ⚠️ **Quellcode verloren** — war nur uncommitted, nie eingecheckt; nur `.pyc`-Bytecode übrig | ❌ leeres Verzeichnis `pages/abo-radar/`, keine Route                   | **gestrichen** laut [[Sollstatus]] — kein Neubau |
+| [[Alerts]]                        | ❌ nicht begonnen (Definition steht)                                                         | ❌                                                                      | [[Issue 8 – Alerts]] ist die Spec          |
 
-Dashboard (Landing-Route): Platzhalter mit statischen Beispieldaten — noch kein echter Daten-Anschluss.
+Die frühere Dashboard-/Overview-Seite wurde mit PR #13 gelöscht — auf `/` liegt jetzt der Kategorien-Explorer. Laut [[Sollstatus]] tauschen Prognose und Explorer noch die Routen (Prognose wird Start).
 
 ## Konsolidierung #2 (22.08., nach Merge PR #12)
 
@@ -31,22 +31,23 @@ Dashboard (Landing-Route): Platzhalter mit statischen Beispieldaten — noch kei
 
 - **Keine Tests mehr auf `main`** (siehe oben) — höchster Wert: Golden-Tests für `forecast()`, den `$filter`-Parser und den `cached`-Chatbot-Pfad (läuft ohne Key, CI-tauglich).
 - **Akzeptanzkriterium nicht erfüllbar mit Sample-Daten:** "Jahresansicht zeigt 13. Monatslohn / Steuertermine / Quartalsrechnungen" — der Datensatz enthält kein solches Muster ([[Datengrundlage]]).
-- **Doppelte Graph-API:** OData- (`GraphNodes`/`GraphMonths`) und REST-Variante (`/graph`, `/graph/months`) sind beide live, keine hat einen Frontend-Consumer. Beim Bau des Explorer-Frontends eine wählen, die andere entfernen.
+- **Doppelte Graph-API:** Der Explorer (PR #13) nutzt die REST-Variante (`/graph`, `/graph/months`) — der Entscheid ist damit gefallen; die OData-Variante (`GraphNodes`/`GraphMonths`) ist toter Code und sollte samt CSDL-Einträgen entfernt werden.
 - **Replay nach Rückfrage:** "Neu rechnen" nach einer beantworteten Rückfrage stellt die Rückfrage erneut (Server merkt sich die Antwort nicht über die aufgelöste Konversation hinaus) — akzeptiert, aber fürs Pitch wissen.
 - **Frontend-Robustheit:** Right-Rail ist desktop-only (`lg:flex`) — auf Mobile fehlen die Forecast-Controls ersatzlos; Sign-out-Button ohne Handler.
 - **Robustheits-Kleinigkeiten Backend:** `$select`/`$filter` auf nicht existierende Felder liefern `null`/leere Liste statt Fehler; `OData-Version`-Header gilt auch für `/health` und die REST-Routen; CORS `*`, kein Auth (für den Hackathon ok). LLM-Nichtdeterminismus bei Folgefragen (`STATUS_FEATURE_NR_5_BACKEND.md`).
 - **Namensfrage:** `README.md` sagt "rhylog", der Vault "Rhylog", die Sidebar "PostFinance / Horizons" — fürs Pitch auf einen Namen einigen.
 - **Ungenutzte Daten:** `data/jeanine_*.csv` referenziert nichts im Code.
 
-## Nächste sinnvolle Schritte (Vorschläge, priorisiert)
+## Nächste Schritte (nach [[Sollstatus]], 22.08.)
 
-1. **Kategorien-Explorer-Frontend** — das Backend liegt fertig brach; grösster Hebel fürs Demo.
-2. **Tests wieder aufbauen** — der `cached`-Chatbot-Pfad plus `forecast()`-Golden-Tests laufen ohne API-Key.
-3. **Dashboard an echte Daten anschliessen** — KPIs aus `GetForecast`/`RecurringPayments` (Free-to-spend, nächste Fixkosten, Engpass-Datum) statt der Fake-Kategorien.
-4. **Abo-Radar neu bauen** (Spec: [[Subscription-Service]]) — oder vorher einen Dekompilierungs-Versuch der `.pyc`-Dateien.
-5. **Alerts umsetzen** ([[Issue 8 – Alerts]]) — vollständig spezifiziert, `large_payment` kann die Outlier-Klassifikation direkt wiederverwenden.
-6. **Mobile-Fallback für die Right-Rail** der Forecast-Seite.
+1. **Routing & Shell:** Prognose wird Startseite (`/`), Explorer zieht auf `/kategorien`, Sidebar-Reihenfolge Prognose → Kategorien → Future Me; leeres Abo-Radar-Verzeichnis löschen ([[Abo-Radar]] ist gestrichen; Dashboard ist seit PR #13 weg).
+2. **Explorer fertigstellen:** OData-Graph-Routen samt CSDL entfernen; Detailpanel-Links "In Prognose simulieren" / "Future Me fragen".
+3. **Szenarien ausbauen:** neuer Adjustment-Typ `adjust_category` (Backend + Szenario-Panel), Kategorie→Prognose-Verlinkung.
+4. **Alerts integriert umsetzen** — Backend nach [[Issue 8 – Alerts]], im Frontend als Ringe/Filter im Explorer und Marker in der Prognose statt eigener Seite.
+5. **Future-Me-Verbindungen:** Hebel→Kategorien-Links, Szenario-Übernahme, vorbefüllte Fragen.
+
+Parallel, unabhängig vom Zielbild: **Tests wieder aufbauen** (`forecast()`-Golden-Tests, `$filter`-Parser, `cached`-Chatbot-Pfad — läuft ohne API-Key) und der **Mobile-Fallback für die Right-Rail**.
 
 ## Abgeschlossene Meilensteine (Git-Historie)
 
-`#1` Verzeichnisstruktur → `#2` Struktur-PR → T0–T11 Prognose-Backend inkl. Pitch-Fixes (sqrt-Band, Recurring-Plausibilität) und QA → `#7` Merge Prognose/Simulation → PR #10 Kategorien-Explorer-Backend → Forecast-/Assistant-Frontend auf `main` → `/odata` → `/api/v1`-Migration (`24ba87e`, `0155594`) → Konsolidierung #1 → **PR #12 Future-Me Chatbot (LLM)** → Frontend-Umstellung auf `/assistant/*` + Konsolidierung #2 (22.08.2026).
+`#1` Verzeichnisstruktur → `#2` Struktur-PR → T0–T11 Prognose-Backend inkl. Pitch-Fixes (sqrt-Band, Recurring-Plausibilität) und QA → `#7` Merge Prognose/Simulation → PR #10 Kategorien-Explorer-Backend → Forecast-/Assistant-Frontend auf `main` → `/odata` → `/api/v1`-Migration (`24ba87e`, `0155594`) → Konsolidierung #1 → **PR #12 Future-Me Chatbot (LLM)** → Frontend-Umstellung auf `/assistant/*` + Konsolidierung #2 → **PR #13 Kategorien-Explorer-Frontend** (D3, ersetzt Dashboard) (22.08.2026).

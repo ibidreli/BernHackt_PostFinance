@@ -17,16 +17,17 @@ Hackathon-Projekt für **BernHackt 2026**, Challenge [[Challenge & Ziel|"Beyond 
 - [[Datengrundlage]] — das Bank-CSV, seine Eigenheiten, die Mock-Daten
 - [[Design-System]] — PostFinance-Farbpalette und Prinzipien
 - [[Projektstatus]] — was fertig ist, was offen, was auf welchem Branch liegt
+- [[Sollstatus]] — das Zielbild: drei verbundene Seiten (Prognose → Kategorien → Future Me)
 
 ## 02 Features
 
 | Feature | Issue | Status |
 |---|---|---|
-| [[Zukunftsprognose & Simulation]] | [[Issue 4 – Zukunftsprognose]] | ✅ Backend und Frontend auf `main` |
-| [[Abo-Radar]] | [[Issue 6 – Abo-Radar]] | ⚠️ Backend-Quellcode verloren (nie committet) — Neubau nach [[Subscription-Service]] nötig; Frontend fehlt |
+| [[Zukunftsprognose & Simulation]] | [[Issue 4 – Zukunftsprognose]] | ✅ Backend und Frontend auf `main`; laut [[Sollstatus]] neue Startseite, Szenarien werden um `adjust_category` erweitert |
 | [[Future-Me Chatbot]] | [[Issue 5 – Future-Me Chatbot]] | ✅ LLM-Backend auf `main` (PR #12) + UI; `cached`-Modus für Demos ohne Key |
-| [[Kategorien-Explorer]] | [[Issue 3 – Kategorien-Explorer]] | Backend auf `main` (PR #10), Frontend fehlt |
-| [[Alerts]] | [[Issue 8 – Alerts]] | Definition erstellt, Umsetzung offen |
+| [[Kategorien-Explorer]] | [[Issue 3 – Kategorien-Explorer]] | ✅ Backend (PR #10) + erste Frontend-Version (PR #13, ersetzt Overview auf `/`); laut [[Sollstatus]] zieht sie auf `/kategorien` |
+| [[Alerts]] | [[Issue 8 – Alerts]] | Definition steht; laut [[Sollstatus]] **keine eigene Seite**, wird in Prognose + Kategorien integriert |
+| [[Abo-Radar]] | [[Issue 6 – Abo-Radar]] | ❌ **gestrichen** ([[Sollstatus]]); Quellcode war verloren, Fixkosten-Sicht lebt in der Prognose weiter |
 
 ## 03 Backend
 

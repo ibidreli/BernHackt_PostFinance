@@ -1,8 +1,10 @@
 ---
 tags: [issue]
-status: offen
+status: verworfen
 issue: 6
 ---
+
+> [!important] Gestrichen (22.08.2026): Laut [[Sollstatus]] wird der Abo-Radar nicht mehr umgesetzt — Issue kann geschlossen werden.
 
 # Issue #6 — Abo-Radar (eigene View)
 

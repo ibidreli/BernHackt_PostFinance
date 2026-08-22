@@ -8,6 +8,9 @@ issue: 3
 
 Spec: [[Issue 3 – Kategorien-Explorer]] · Referenz-Visualisierung: [data-to-viz.com/graph/circularpacking](https://www.data-to-viz.com/graph/circularpacking.html)
 
+> [!note] Soll-Änderungen (22.08.2026, [[Sollstatus]])
+> Ist die **zweite Hauptseite** und ersetzt die Overview/Dashboard-Seite — die erste Version liegt seit PR #13 auf `/`, laut Sollstatus zieht sie auf `/kategorien` (Prognose wird Start). API-Entscheid gefallen: die **REST-Variante** (`/api/v1/graph`), die OData-Graph-Routen werden entfernt. Die Anomalie-Ringe (Alert-Integration) sind **Pflicht statt nice-to-have**; Detailpanel bekommt "In Prognose simulieren" und "Future Me fragen".
+
 ## Die Idee
 
 Die Transaktionsliste wird durch eine hierarchische **Circle-Packing-Visualisierung** ersetzt: Kreisfläche = Franken-Betrag, vier Ebenen (`Ausgaben → Transport → SBB → einzelne Buchung`), zoombar per Klick bis zur einzelnen Buchung, die ein Detailpanel öffnet. Warum Fläche statt Anzahl zählt: die Kantine hat 121 Buchungen aber nur CHF 1'616, die Miete 12 Buchungen und CHF 21'840.
@@ -31,4 +34,6 @@ Sobald das Frontend gebaut wird, sollte das Team sich für **eine** Variante ent
 
 ## Status
 
-**Backend umgesetzt, auf `main` (PR #10):** `app/services/graph_service.py`, `app/schemas/graph.py`, `app/api/routes/graph.py`, `app/api/routes/graph_odata.py` sowie die im Issue geforderte Merchant-Alias-Normalisierung (`app/services/merchant_normalization.py`). **Frontend fehlt komplett** — keine Route, kein Consumer der Graph-Endpunkte; die Circle-Packing-Visualisierung ist noch zu bauen.
+**Backend umgesetzt, auf `main` (PR #10):** `app/services/graph_service.py`, `app/schemas/graph.py`, `app/api/routes/graph.py`, `app/api/routes/graph_odata.py` sowie die im Issue geforderte Merchant-Alias-Normalisierung (`app/services/merchant_normalization.py`).
+
+**Frontend: erste Version auf `main` (PR #13):** `pages/explorer/` + `core/graph.ts` (`d3-hierarchy`) auf Route `/` — Monats-Slider mit Client-Cache (ein `flow=both&mode=delta`-Request pro Monat deckt alle Toggle-Kombinationen), Ausgaben/Einnahmen/Beides, Absolut⇄Delta, Zoom/Fokus, Detailpanel mit Transaktionstabelle, Summary-Balken ab 15 Kindern. Noch offen: Alert-Ringe und die Verbindungs-Buttons aus dem [[Sollstatus]].

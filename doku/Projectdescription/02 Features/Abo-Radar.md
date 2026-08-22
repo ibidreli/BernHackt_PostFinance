@@ -1,8 +1,11 @@
 ---
 tags: [feature]
-status: offen
+status: verworfen
 issue: 6
 ---
+
+> [!important] Aus dem Plan gestrichen (22.08.2026, [[Sollstatus]])
+> Der Abo-Radar wird **nicht mehr gebaut** — weder als eigene Seite noch als Backend-Neubau. Die Fixkosten-Sicht lebt als Teilmenge in der Prognose weiter (Liste aus `RecurringPayments`, Kündigungs-Szenarien). Diese Notiz und [[Subscription-Service]] bleiben als Archiv/Referenz erhalten.
 
 # Abo-Radar
 

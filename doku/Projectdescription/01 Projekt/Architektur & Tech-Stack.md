@@ -42,7 +42,7 @@ Pro Request rechnen [[Forecast-Service]] / [[Subscription-Service]] auf diesen v
 ## Frontend (apps/web)
 
 - **Angular 22** (Standalone Components, Signals, `input()`/`output()`, native Control Flow `@if/@for`, `@Service`-Decorator), **Tailwind CSS 4** + **daisyUI 5**, `@lucide/angular` für Icons, TypeScript ~6.0. Konventionen: [[App-Shell & Navigation]].
-- Auf `main` liegen die Shell (Layout, Sidebar, Theme) **und** die Feature-Seiten [[Forecast-Seite]] und [[Assistant-Seite]]; das Dashboard (Landing-Route) ist noch ein Platzhalter mit statischen Beispieldaten. `proxy.conf.json` proxyt `/api` auf `localhost:8000`; sämtliche Endpunkte laufen unter `/api/v1` (Migration von `/odata` abgeschlossen, Commits `24ba87e`/`0155594`, siehe [[OData-Layer]]).
+- Auf `main` liegen die Shell (Layout, Sidebar, Theme) und drei Feature-Seiten: [[Kategorien-Explorer]] (Landing-Route `/`, seit PR #13, mit `d3-hierarchy`), [[Forecast-Seite]] (`/forecast`) und [[Assistant-Seite]] (`/assistant`). `proxy.conf.json` proxyt `/api` auf `localhost:8000`; sämtliche Endpunkte laufen unter `/api/v1` (Migration von `/odata` abgeschlossen, Commits `24ba87e`/`0155594`, siehe [[OData-Layer]]).
 
 ## AI-Tooling
 
