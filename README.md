@@ -66,7 +66,7 @@ Tests:
 cd apps/api && pip install -r requirements-dev.txt && CSV_PATH=../../data/data_personal.csv python -m pytest
 ```
 
-The Angular dev server proxies `/odata` to `http://localhost:8000`
+The Angular dev server proxies `/api` to `http://localhost:8000`
 (`apps/web/proxy.conf.json`), so the frontend stays origin-relative.
 
 ### Data

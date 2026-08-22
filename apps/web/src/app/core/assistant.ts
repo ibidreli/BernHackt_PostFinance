@@ -74,7 +74,7 @@ export const HORIZONS: readonly { value: Horizon; label: string }[] = [
   { value: '10y', label: '10 Jahre' },
 ];
 
-const ODATA = '/odata';
+const api = '/api/v1';
 
 /**
  * Owns the conversation and the three assumption sliders.
@@ -108,9 +108,9 @@ export class Assistant {
   });
 
   async loadSuggestions(): Promise<void> {
-    // Collection-typed OData Function: the questions arrive under `value`.
+    // Collection-typed api Function: the questions arrive under `value`.
     const response = await firstValueFrom(
-      this.http.get<{ value: string[] }>(`${ODATA}/Suggestions`, {
+      this.http.get<{ value: string[] }>(`${api}/Suggestions`, {
         params: { horizon: this.horizon() },
       }),
     );
@@ -129,7 +129,7 @@ export class Assistant {
     this.pending.set(true);
     try {
       const answer = await firstValueFrom(
-        this.http.post<Answer>(`${ODATA}/Ask`, {
+        this.http.post<Answer>(`${api}/Ask`, {
           message,
           horizon: this.horizon(),
           assumptions: {

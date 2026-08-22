@@ -26,7 +26,7 @@ def client():
 
 def ask(client, message: str, **kwargs) -> dict:
     body = {"message": message, "horizon": kwargs.pop("horizon", "5y"), **kwargs}
-    response = client.post("/odata/Ask", json=body)
+    response = client.post("/api/v1/Ask", json=body)
     assert response.status_code == 200, response.text
     return response.json()
 
@@ -47,13 +47,13 @@ def test_three_supported_intents(client, message, intent):
 
 
 def test_metadata_declares_both_assistant_resources(client):
-    csdl = client.get("/odata/$metadata").text
+    csdl = client.get("/api/v1/$metadata").text
     assert '<Action Name="Ask">' in csdl
     assert '<Function Name="Suggestions">' in csdl
 
 
 def test_suggestions_is_an_odata_collection(client):
-    body = client.get("/odata/Suggestions", params={"horizon": "5y"}).json()
+    body = client.get("/api/v1/Suggestions", params={"horizon": "5y"}).json()
     assert body["@odata.context"].endswith("#Suggestions")
     assert len(body["value"]) >= 3
 

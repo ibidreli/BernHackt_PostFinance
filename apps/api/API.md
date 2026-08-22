@@ -216,7 +216,7 @@ Vollständige Liste mit Begründung in [STATUS.md](STATUS.md). Die wichtigsten:
 
 ---
 
-# Assistenz (`/odata`)
+# Assistenz (`/api/v1`)
 
 Zwei weitere OData-Ressourcen auf demselben Service - der ganze Backend spricht
 ein Protokoll, es gibt keinen zweiten REST-Zweig daneben.
@@ -231,7 +231,7 @@ Pfad: Zahlen aus `forecast_service`, Formulierung aus Templates. Die Seite
 funktioniert damit heute, und das Modell wird später hinter demselben Contract in
 `intent_service` und den Formulierungsschritt eingesetzt.
 
-## `POST /odata/Ask`
+## `POST /api/v1/Ask`
 
 Beantwortet genau drei Fragetypen. Alles andere → `status: "unsupported"`, ohne
 Rateversuch.
@@ -272,7 +272,7 @@ bei der Krankenkasse" ist kein Rat. `potential_chf` ist pauschal 50 % der Katego
 Anfrage: fehlender Betrag, und Bar/Leasing ab CHF 10'000. Wird eine Rückfrage über
 `context.pending_clarification` beantwortet, wird sie nicht erneut gestellt.
 
-## `GET /odata/Suggestions?horizon=5y`
+## `GET /api/v1/Suggestions?horizon=5y`
 
 Drei Vorschlagsfragen als Chips, abhängig vom Horizont. Collection-typisierte
 Function, die Fragen stehen also unter `value`. Query-Parameter statt strikter

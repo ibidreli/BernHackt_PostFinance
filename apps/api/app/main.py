@@ -56,6 +56,7 @@ install_odata_error_handlers(app)
 app.include_router(graph_odata_router, prefix="/api/v1")
 app.include_router(graph_router, prefix="/api/v1")
 app.include_router(forecast_router, prefix="/api/v1")
+app.include_router(assistant_router, prefix="/api/v1")
 
 # Read-only service over a local CSV, no auth and no cookies - the
 # Angular dev server (a different origin) needs to reach it directly

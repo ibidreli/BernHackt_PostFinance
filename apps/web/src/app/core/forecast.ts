@@ -84,7 +84,7 @@ export const HORIZONS: readonly { value: Horizon; label: string }[] = [
 
 type SimulateResult = { baseline: ForecastResult; scenario: ForecastResult; diff: Diff };
 
-const ODATA = '/odata';
+const api = '/api/v1';
 
 /**
  * Owns the horizon, the active scenario adjustments, and the forecast
@@ -103,16 +103,16 @@ export class Forecast {
     const adjustments = this.adjustments();
     return adjustments.length
       ? {
-          url: `${ODATA}/Simulate`,
+          url: `${api}/Simulate`,
           method: 'POST',
           body: { horizon, adjustments: adjustments.map((adjustment) => adjustment.payload) },
         }
-      : { url: `${ODATA}/GetForecast`, method: 'GET', params: { horizon } };
+      : { url: `${api}/GetForecast`, method: 'GET', params: { horizon } };
   });
 
   /** Active expense subscriptions, for the cancel picker. */
   readonly recurring = httpResource<{ value: RecurringPayment[] }>(() => ({
-    url: `${ODATA}/RecurringPayments`,
+    url: `${api}/RecurringPayments`,
     params: { $filter: "is_active eq true and flow eq 'expense'", $orderby: 'amount_chf desc' },
   }));
 
