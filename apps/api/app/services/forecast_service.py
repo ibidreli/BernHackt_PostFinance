@@ -96,6 +96,7 @@ from app.services.classification import Classification
 from app.services.recurring_detection import detect_salary_recurring, recurring_payment_id
 
 _DAYS_PER_MONTH = 30.44  # 365.25 / 12
+DAYS_PER_MONTH = _DAYS_PER_MONTH  # public alias - T5 (Feature #5) needs this too for "present"-horizon month fractions
 _HORIZON_DAYS = {"30d": 30, "90d": 90, "365d": 365}
 _INTERVAL_STEP_MONTHS = {"monthly": 1, "quarterly": 3, "yearly": 12}
 _INTERVAL_MONTHLY_FACTOR = {"monthly": 1.0, "quarterly": 1 / 3, "yearly": 1 / 12}
@@ -523,6 +524,11 @@ class LongTermForecast(NamedTuple):
     monthly_income_chf: float
     monthly_fixed_expense_chf: float
     monthly_variable_expense_chf: float
+    monthly_expenses_at_horizon_end_chf: float
+    """`monthly_fixed_expense_chf + monthly_variable_expense_chf` grown to
+    the *end* of the horizon (fixed stays flat, variable inflates) -
+    T5's "wie viele Monatsausgaben" denominator (`buffer_after_months`),
+    precomputed here so T5 doesn't need to re-derive `_monthly_ratio`."""
     variable_baseline_months_used: int
     excluded_outliers: list[str]
     notes: list[str]
@@ -636,6 +642,7 @@ def project_long_term(
         monthly_income_chf=round(base_income, 2),
         monthly_fixed_expense_chf=round(base_fixed, 2),
         monthly_variable_expense_chf=round(base_var_median, 2),
+        monthly_expenses_at_horizon_end_chf=round(base_fixed + base_var_median * (r_var**months), 2),
         variable_baseline_months_used=months_used,
         excluded_outliers=_excluded_outliers(classifications, as_of, VARIABLE_BASELINE_MONTHS),
         notes=notes,
@@ -645,7 +652,7 @@ def project_long_term(
 # --- POST /forecast/simulate ------------------------------------------
 
 
-def _apply_adjustments(
+def apply_adjustments(
     recurring_payments: list[RecurringPayment],
     adjustments: list[Adjustment],
 ) -> _ScenarioOverrides:
@@ -770,7 +777,7 @@ def simulate(
     baseline = forecast(
         transactions, recurring_payments, classifications, balance_repo, horizon, as_of, buffer_chf
     )
-    overrides = _apply_adjustments(recurring_payments, adjustments)
+    overrides = apply_adjustments(recurring_payments, adjustments)
     scenario = forecast(
         transactions,
         recurring_payments,

@@ -137,3 +137,33 @@ Weitere Annahmen siehe T0–T13 unten, jeweils im Kontext.
 
 **Erweiterungen:**
 - `ConversationStore.__len__` ist als kleiner Health-Check-Hook gedacht (z. B. `/health` könnte später `len(app.state.conversation_store)` zeigen) - aktuell noch nirgends verdrahtet.
+
+---
+
+## T5 — Antwortlogik (yes/tight/no_unless, Hebel)
+
+**Stand:** Fertig — `services/answer_service.py`, live gegen echte Daten getestet: Hebel-Sortierung, alle drei Zustände (garantiertes no_unless mit riesigem Ziel, garantiertes yes/tight mit 0-CHF-Ziel), Horizont-Konsistenz (1y/5y/10y liefern alle ein Ergebnis), `time_to_goal` mit Korridor-Suche, `what_if` für alle 4 Adjustment-Typen über beide Rechenpfade (present via Feature-4-`simulate()`, 1y/5y/10y via `project_long_term`), der `UnresolvedAdjustmentError`-Pfad, und ein echter End-to-End-Beweis (`extract_intent()` → `answer_affordability()`).
+
+**Bugs:** Einen echten Bug beim Testen gefunden und behoben: `months_remaining` bei `horizon="present"` wurde als gerundete Ganzzahl gemeldet — bei einem Bruchteilsmonat wie 0.1–0.4 (wenige Tage bis zum nächsten Lohn) rundete das auf **0**, was fälschlich wie "keine Zeit mehr übrig" aussieht. Live reproduziert (0-CHF-Ziel-Test zeigte `months_remaining: 0`), behoben durch `None` bei `present` statt einer irreführenden gerundeten Zahl — `required_monthly_chf` selbst nutzt weiterhin den exakten Bruchteilswert, nur die Anzeige war betroffen.
+
+**Zwei Erweiterungen an bereits bestehendem Code (T2/Feature #4), um Duplikation zu vermeiden statt sie in T5 nachzubauen:**
+- `LongTermForecast` (T2) um `monthly_expenses_at_horizon_end_chf` ergänzt (fixe + inflationierte variable Ausgaben am Horizontende) — sonst hätte T5 die Zinseszins-Formel aus T2 duplizieren müssen.
+- `CategoryStats` (Feature #4, `transaction_repository.py`) um `min_chf` ergänzt (echtes historisches Monats-Minimum, nicht P25) — Basis für `potential_chf`. Rückwärtskompatibel (neues Feld, keine bestehende Nutzung geändert), gegen den laufenden Container verifiziert (T2/T4-Health-Check weiterhin grün).
+- `forecast_service._apply_adjustments` → `apply_adjustments` (öffentlich gemacht) — T5 braucht sie für den 1y/5y/10y-what_if-Pfad (modifizierte `recurring_payments`-Liste in `project_long_term` einspeisen).
+
+**Design-Entscheidungen:**
+- **`_evaluate_target` ist eine einzige geteilte Funktion** für `affordability`, `time_to_goal` UND `what_if` — bei `what_if` mit `target_chf=0.0` aufgerufen ("bleibt das Szenario finanziell gesund?"), keine drei separate Zustands-Logiken. Live verifiziert: alle drei Pfade liefern konsistent einen der drei Zustände, nie ein rohes Ja/Nein.
+- **`what_if` bei `present` nutzt Feature 4s echtes `simulate()` unverändert** (exakt, ereignis-datiert), **bei 1y/5y/10y einen neuen Vergleichspfad** über zwei `project_long_term`-Aufrufe (Baseline vs. mit modifizierten `recurring_payments`) — konsistent mit der bereits in T2 getroffenen "present = bestehende Funktion, 1y/5y/10y = neues Aggregat-Modell"-Aufteilung.
+- **`one_off` bei 1y/5y/10y wird als konstanter Shift ab Tag 0 modelliert**, nicht als Ereignis zu einem bestimmten Datum — da T3 kein Datum extrahiert (Rückfrage-Set deckt das nicht ab) und `resolve_adjustment` das Datum deshalb immer auf `as_of` setzt, ist "ab jetzt permanent tiefer" exakt richtig, keine Näherung. Live mit einer Kontrollrechnung verifiziert (exakt −2000 CHF am Horizontende bei einer einmaligen 2000-CHF-Ausgabe).
+- **`add_recurring` nutzt immer `interval="monthly"`** als Default — T3 extrahiert keine Periodizität (nicht Teil des fixen Rückfrage-Sets).
+- **`_match_merchant`** ist ein simpler Case-insensitive-Substring-Match mit "kürzester Treffer gewinnt" als Tie-Break bei mehreren Kandidaten — bewusst simpel, kein Fuzzy-Matching.
+
+**Echter Fund beim Testen, nicht behoben (ausserhalb T5s Scope):** Die Frage *"Kann ich mir in 5 Jahren 15000 Franken für eine Weltreise leisten?"* löste beim echten End-to-End-Test die "Bar oder Leasing?"-Rückfrage aus (`target_chf=15000 >= LARGE_PURCHASE_THRESHOLD_CHF`). Inhaltlich unpassend — eine Weltreise least man nicht. Der Trigger in T3 ist rein betragsbasiert und unterscheidet nicht zwischen finanzierbaren Gütern (Auto, Möbel) und Erlebnissen/Reisen. Für eine spätere Verfeinerung des Extraktions-Prompts (T8) vorgemerkt, hier nicht selbständig behoben, da es T3s Zuständigkeit betrifft, nicht T5s.
+
+**Grenzen:**
+- `_compute_wait_months` ist eine grobe Schätzung mit der heutigen Sparrate, keine erneute Simulation mit Wachstum über die Wartezeit — für eine "wie lange noch"-Hausnummer ausreichend, nicht exakt.
+- Bei `savings_rate_pct`-Override bleibt das Band (Unsicherheit) weiterhin aus der echten Ausgaben-Streuung, nicht aus der überschriebenen Sparquote — dokumentierte Vereinfachung aus T2, hier unverändert übernommen.
+- Kein Caching zwischen mehrfachen `project_long_term`-Aufrufen innerhalb einer Antwort (z. B. `answer_affordability`'s "present"-Pfad ruft sowohl `forecast()` als auch `project_long_term(months=1)` auf) — für die paar Requests einer Demo irrelevant, bei echtem Traffic zu prüfen.
+
+**Erweiterungen:**
+- `resolve_adjustment`/`_match_merchant` könnten künftig mehrere Kandidaten zurückmelden statt still den kürzesten zu wählen, falls das Frontend eine Auswahl anbieten will.

@@ -230,6 +230,11 @@ class CategoryStats(NamedTuple):
 
     category_main: str | None
     category_sub: str | None
+    min_chf: float
+    """Actual lowest monthly total observed in the window (not a
+    percentile) - Feature #5's basis for `Lever.potential_chf`
+    (`median_chf - min_chf`, "was der Nutzer selbst schon mal geschafft
+    hat"), see app/services/answer_service.py, T5."""
     p25_chf: float
     median_chf: float
     p75_chf: float
@@ -319,6 +324,7 @@ def monthly_category_stats(
             CategoryStats(
                 category_main=category_main,
                 category_sub=category_sub,
+                min_chf=round(values[0], 2),
                 p25_chf=round(_percentile(values, 0.25), 2),
                 median_chf=round(_percentile(values, 0.5), 2),
                 p75_chf=round(_percentile(values, 0.75), 2),
