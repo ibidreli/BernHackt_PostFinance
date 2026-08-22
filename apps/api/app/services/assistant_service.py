@@ -24,6 +24,7 @@ resolved `ok` computation goes through formulation.
 
 from __future__ import annotations
 
+import logging
 from datetime import date
 
 from app.core.config import ASSISTANT_MODE
@@ -49,6 +50,9 @@ from app.services.conversation_state import (
 from app.services.formulation_service import FormulationInput, formulate_answer, template_answer
 from app.services.intent_service import extract_intent, validate_extraction
 from app.services.intent_service import apply_clarification_answer as _apply_clarification_answer
+from app.services.verification_service import verify_answer_text
+
+logger = logging.getLogger(__name__)
 
 _UNSUPPORTED_SUFFIX = (
     "Ich kann bei drei Dingen helfen: ob du dir etwas leisten kannst, was eine Änderung an einer "
@@ -265,7 +269,19 @@ def ask(
         assumptions_used=result.assumptions_used,
         default_used_note=default_note,
     )
-    answer_text = template_answer(formulation_input) if mode == "cached" else formulate_answer(formulation_input)
+    if mode == "cached":
+        answer_text = template_answer(formulation_input)
+    else:
+        answer_text = formulate_answer(formulation_input)
+        # T10: Zahlenabgleich - issue's own final safeguard. Falls back
+        # to the same always-correct template used for cached mode (T9)
+        # rather than a second bespoke mechanism. Doesn't change `source`
+        # ("live" stays accurate - the computation was live either way,
+        # only the wording's origin silently changes) but is logged so
+        # it's visible during QA/the pitch if it ever fires.
+        if not verify_answer_text(answer_text, result.facts, result.levers, resolved_horizon):
+            logger.warning("Zahlenabgleich fehlgeschlagen, Fallback auf Template-Formulierung: %r", answer_text)
+            answer_text = template_answer(formulation_input)
 
     if conversation_id:
         conversation_store.save(

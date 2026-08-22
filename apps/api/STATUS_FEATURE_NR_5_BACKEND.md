@@ -273,3 +273,26 @@ Weitere Annahmen siehe T0–T13 unten, jeweils im Kontext.
 
 **Erweiterungen:**
 - `GET /suggestions` (T11) könnte im `cached`-Modus automatisch nur die 5 hier hinterlegten Fragen zeigen, im `live`-Modus freiere Vorschläge - noch nicht verdrahtet.
+
+---
+
+## T10 — Zahlenabgleich Formulierung vs. facts
+
+**Stand:** Fertig — `services/verification_service.py`, live verifiziert an 7 Fällen: der historische T7-Bug (Einheiten-Verwechslung) reproduziert und bestätigt jetzt erkannt, ein korrekter Text besteht, eine erfundene Zahl wird erkannt, Rundungstoleranz greift korrekt nur bei 5y/10y, Hebel-Beträge werden korrekt akzeptiert, ein echter End-to-End-Test mit künstlich kaputt gemachtem LLM-Text zeigt den Fallback in Aktion, und ein Regressionstest über 5 echte LLM-Antworten zeigt 0 falsch-positive Ablehnungen.
+
+**Bugs:** Keine gefunden.
+
+**Design-Entscheidungen:**
+- **Zahlen werden typgebunden geprüft, nicht als nackte Zahlenmenge.** Der Kern der ganzen Idee: eine mit "CHF" geschriebene Zahl wird nur gegen echte CHF-Werte aus `facts`/`levers` geprüft, eine mit "Monat(en)" geschriebene Zahl nur gegen echte Monats-Werte. Das ist genau die Lücke, die eine naive "kommt diese Zahl irgendwo in facts vor?"-Prüfung offen gelassen hätte - der historische Bug (`buffer_after_months=1.1` als "CHF 1" beschrieben) hätte eine untypisierte Prüfung nicht gefangen, weil die Zahl 1 (gerundet von 1.1) ja tatsächlich in `facts` vorkommt. Live mit genau diesem Fall bewiesen.
+- **Fallback nutzt `template_answer()` (T9) wieder**, statt einen zweiten Fallback-Mechanismus zu bauen - eine Codebasis für "garantiert korrekter Text ohne LLM", die für zwei verschiedene Zwecke (Cache-Modus, Verifikations-Fallback) wiederverwendet wird.
+- **Toleranz statt exakter Übereinstimmung**, weil das Rundungs-Vorgabe im Formulierungs-Prompt (auf 100 CHF bei 5y/10y) sonst ständig false positives ausgelöst hätte - 60 CHF Tolerenz bei 5y/10y (etwas mehr als die theoretischen ±50 einer Rundung-auf-100, um dem Modell etwas Spielraum bei der Rundungsrichtung zu lassen), 1 CHF bei present/1y (keine Rundung erlaubt, entsprechend strikt). Live verifiziert: dieselbe Abweichung wird bei 5y toleriert, bei present korrekt abgelehnt.
+- **`source` bleibt `"live"` auch wenn der Fallback greift** - die Berechnung war live und echt, nur die Wortwahl kam vom Template statt vom Modell. Ein Logging-Warning (`logger.warning`) macht das für die QA/den Betrieb trotzdem sichtbar, ohne das Response-Schema um ein weiteres Feld zu erweitern.
+- **Nur CHF- und Monats-Zahlen werden geprüft**, keine Handlungs-Beschreibung (z. B. ob "gekündigt" tatsächlich der richtige Fall ist) - das ist strukturell schon in T7 gelöst (`adjustment_description` gibt die Handlung fest vor, das Modell muss sie nicht mehr erraten), nicht nochmal Aufgabe des Zahlenabgleichs. "Zahlenabgleich" im Namen ist wörtlich zu nehmen.
+
+**Grenzen:**
+- Erkennt nur Zahlen, die explizit mit "CHF" oder "Monat(en)" geschrieben sind - eine Zahl ganz ohne Einheitswort (unwahrscheinlich bei den Prompt-Vorgaben, aber theoretisch möglich) würde nicht geprüft.
+- Keine Prüfung, ob eine im Text genannte Zahl eine *korrekte Ableitung* aus mehreren `facts`-Werten ist (z. B. eine Summe aus zwei Beträgen) - nur ob sie *irgendeinem einzelnen* erwarteten Wert nahekommt. Für die bisher beobachteten Formulierungen (die immer einzelne `facts`-Felder direkt nennen, keine eigenen Summen bilden) ausreichend, aber keine allgemeine Arithmetik-Prüfung.
+- Kein automatisiertes Eval-Set über viele Fragen - die 0-Falsch-Positive-Beobachtung stammt aus 5 Live-Calls in einem Testlauf, nicht aus einer grösseren Stichprobe.
+
+**Erweiterungen:**
+- Die gleiche typgebundene Prüfung liesse sich leicht auf weitere Einheiten ausweiten (z. B. Prozent-Angaben), falls künftige Antworttexte das brauchen.
