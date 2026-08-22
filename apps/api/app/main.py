@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response
 
 from app.api.routes.forecast import router as forecast_router
-from app.core.config import CSV_PATH
+from app.core.config import ASSISTANT_MODE, CSV_PATH, OPENAI_API_KEY
 from app.data.data_personal import load_raw_transactions
 from app.odata.envelope import ODataVersionMiddleware, install_odata_error_handlers
 from app.odata.metadata import METADATA_XML
@@ -26,6 +26,18 @@ from app.services.recurring_detection import detect_recurring_payments, detect_s
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Feature #5 (Future-Me Chatbot): fail fast, same philosophy as the
+    # missing-CSV case below - a cryptic per-request OpenAI auth error deep
+    # inside a chat request is a worse failure mode during the pitch than
+    # the container refusing to start with a clear message. Only required
+    # in "live" mode; ASSISTANT_MODE=cached needs no key at all.
+    if ASSISTANT_MODE == "live" and not OPENAI_API_KEY:
+        raise RuntimeError(
+            "OPENAI_API_KEY fehlt (ASSISTANT_MODE=live). Entweder "
+            "apps/api/app/.env setzen (siehe .env.example) oder "
+            "ASSISTANT_MODE=cached fuer den Offline-Fallback verwenden."
+        )
+
     raw = load_raw_transactions()
     app.state.raw_transactions = raw
     repo = TransactionRepository.from_raw(raw)
