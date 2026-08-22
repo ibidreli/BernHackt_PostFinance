@@ -1,12 +1,12 @@
 ---
 tags: [frontend, ai]
-status: in-arbeit
-branch: origin/feature/prognosis
+status: umgesetzt
+branch: main
 ---
 
 # Assistant-Seite
 
-Code (Branch `origin/feature/prognosis`): `apps/web/src/app/pages/assistant/assistant.ts|.html`, `assistant-chart.ts`, Typen/Client in `app/core/assistant.ts` · Feature: [[Future-Me Chatbot]] · Backend: [[Assistant-Pipeline]]
+Code (auf `main`): `apps/web/src/app/pages/assistant/assistant.ts|.html`, `assistant-chart.ts`, Typen/Client in `app/core/assistant.ts` · Feature: [[Future-Me Chatbot]] · Backend: [[Assistant-Pipeline]]
 
 ## Aufbau
 

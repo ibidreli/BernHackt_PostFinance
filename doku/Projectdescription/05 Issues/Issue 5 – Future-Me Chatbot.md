@@ -16,7 +16,7 @@ API: `POST /api/v1/assistant/ask` (Antwort mit `intent`, `status`, `facts`, `lev
 
 ## Umsetzungsstand
 
-Auf Branches gebaut, nicht gemergt ([[Projektstatus]]): Pipeline + Schemas + Tests auf `origin/feature/prognosis`, OpenAI-Setup auf `origin/5-…` mit eigenem Status-Log `STATUS_FEATURE_NR_5_BACKEND.md` (T0–T13). Vier team-abgestimmte Abweichungen — Timeout ohne stillen Fallback, "Kantine halbieren" → `unsupported`, Folgefragen im Scope, `potential_chf` = historisches Minimum. Details: [[Assistant-Pipeline]].
+Die **LLM-Implementierung ist auf `main` gemergt** (PR #12, 22.08.2026; Status-Log `STATUS_FEATURE_NR_5_BACKEND.md`, T0–T13): echte OpenAI-Anbindung mit Structured Outputs, `ASSISTANT_MODE=cached` als Offline-Fallback, Zahlenabgleich (`verification_service`), Konversations-State pro `conversation_id`. Die zwischenzeitliche regelbasierte Zweit-Implementierung von `origin/feature/prognosis` wurde beim Merge verworfen — ihre Testdatei `tests/test_assistant.py` entfiel mit; Verifikation läuft über `inspect_*`-Skripte. Das Frontend wurde am 22.08. auf die neuen Endpunkte umgestellt. Vier team-abgestimmte Abweichungen: Timeout ohne stillen Fallback, "Kantine halbieren" → `unsupported`, Folgefragen im Scope, `potential_chf` = historisches Minimum. Details: [[Assistant-Pipeline]], [[Future-Me Chatbot]].
 
 ## Offene Fragen aus dem Issue
 

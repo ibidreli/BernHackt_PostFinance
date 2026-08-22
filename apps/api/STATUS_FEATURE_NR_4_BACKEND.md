@@ -209,7 +209,7 @@ Beides ist harmlos für die Demo (kein Crash, keine falschen Zahlen), aber bei e
 **Grenzen:**
 - `$filter`-Parser ist handgeschrieben (nicht die `odata-query`-Library aus der ursprünglichen Planung) — bewusste Entscheidung, siehe Moduldocstring: das begrenzte Grammatik-Subset (eq/ne/gt/ge/lt/le, and/or/not, Klammern, String/Zahl/Bool/Null) liess sich vollständig selbst verifizieren, statt auf die exakte API einer unbekannten Bibliothek zu wetten. Kein `contains`/`startswith`, keine Arithmetik.
 - `$metadata` ist statisch handgeschrieben, nicht aus den Pydantic-Schemas generiert — muss bei Schema-Änderungen manuell nachgezogen werden (im Moduldocstring vermerkt).
-- `OData-Version`-Header und Error-Envelope gelten service-weit (auch für `/health`, nicht nur `/odata/*`) — bewusst einfach gehalten, siehe Moduldocstring.
+- `OData-Version`-Header und Error-Envelope gelten service-weit (auch für `/health`, nicht nur `/api/v1/*`) — bewusst einfach gehalten, siehe Moduldocstring.
 - Kein `$batch`, keine Atom/XML-Repräsentation — bewusst ausserhalb des pragmatischen Subsets (siehe frühere OData-Tiefe-Entscheidung).
 
 **Erweiterungen:**
@@ -220,7 +220,7 @@ Beides ist harmlos für die Demo (kein Crash, keine falschen Zahlen), aber bei e
 
 ## T10 — `api/routes/forecast.py`
 
-**Stand:** Fertig — alle drei Endpunkte über echte HTTP-Requests verifiziert (`docker compose up` + curl): `GET /odata/RecurringPayments` (EntitySet), `GET /odata/GetForecast` (Function), `POST /odata/Simulate` (Action).
+**Stand:** Fertig — alle drei Endpunkte über echte HTTP-Requests verifiziert (`docker compose up` + curl): `GET /api/v1/RecurringPayments` (EntitySet), `GET /api/v1/GetForecast` (Function), `POST /api/v1/Simulate` (Action). (Zum Zeitpunkt von T10 lagen die Routen unter `/odata`; seit Commit `24ba87e` ist der Mount `/api/v1`.)
 
 **Bugs:** Keine gefunden.
 
@@ -243,7 +243,7 @@ Beides ist harmlos für die Demo (kein Crash, keine falschen Zahlen), aber bei e
 - **Gefunden & gefixt:** `ForecastEnvelope`/`SimulateEnvelope` (neue typisierte Schemas, damit Swagger die echte Antwortform statt `dict` zeigt) liessen sich beim ersten Versuch nicht laden: `NextSalary.date: date = Field(...)` kollidierte mit `from __future__ import annotations` — ein bekannter Pydantic-Stolperstein, wenn Feldname und Typname identisch sind (`date: date`) und gleichzeitig `Field(...)` verwendet wird. Fix: bei diesem einen Feld auf reine Annotation ohne `Field()` zurückgestellt, Beschreibung stattdessen in den Docstring.
 
 **Grenzen:**
-- `GET /odata/RecurringPayments` bleibt bewusst ohne `response_model` (also ohne strikt typisiertes Swagger-Schema) — `$select` kann auf ein beliebiges Feld-Subset projizieren, ein festes Pydantic-Schema würde bei Verwendung von `$select` an der eigenen Validierung scheitern. Stattdessen ausführliche Swagger-`description` mit Beispielen.
+- `GET /api/v1/RecurringPayments` bleibt bewusst ohne `response_model` (also ohne strikt typisiertes Swagger-Schema) — `$select` kann auf ein beliebiges Feld-Subset projizieren, ein festes Pydantic-Schema würde bei Verwendung von `$select` an der eigenen Validierung scheitern. Stattdessen ausführliche Swagger-`description` mit Beispielen.
 - **Gefunden & gefixt (nach T11, beim gemeinsamen Testen):** `amount_history` war standardmässig in jedem `RecurringPayments`-Listeneintrag enthalten — bei einem Merchant mit 196 Verlaufseinträgen machte das 88 % der Payload einer 10-Item-Antwort aus (25.4 KB → 2.8 KB nach dem Fix). Kein Bug im engeren Sinne, aber kein guter Default für einen Listen-Endpunkt. Fix: `amount_history` nur noch enthalten, wenn explizit per `$select` angefordert (`_DEFAULT_SELECT` in `app/api/routes/forecast.py`).
 - `$metadata` (CSDL) und `API.md` können bei Schema-Änderungen auseinanderlaufen, da beide von Hand gepflegt werden (siehe T9-Grenzen).
 

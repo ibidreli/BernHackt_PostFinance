@@ -6,7 +6,7 @@ tags: [backend, api]
 
 Vollreferenz: `apps/api/API.md` · interaktiv: Swagger unter `http://localhost:8000/docs` · CSDL: `GET /api/v1/$metadata` · Technik dahinter: [[OData-Layer]]
 
-Mount-Pfad `/api/v1` (vormals `/odata`) — reine Pfad-Umbenennung, konsistent mit dem [[Future-Me Chatbot]]s `/api/v1/assistant/...`; die OData-Semantik (Envelope, Header, `$metadata`, Fehlerformat) bleibt unverändert.
+Mount-Pfad `/api/v1` (vormals `/odata`, umbenannt mit Commit `24ba87e`) — reine Pfad-Umbenennung; die OData-Semantik (Envelope, Header, `$metadata`, Fehlerformat) bleibt unverändert. Ausnahme: der [[Future-Me Chatbot]] läuft als **REST** unter `/api/v1/assistant/*` (Issue-Contract wörtlich, eigene Referenz `apps/api/ASSISTANT_API.md`) — das Fehlerformat ist trotzdem dasselbe, weil die OData-Error-Middleware service-weit gilt.
 
 ## Endpunkte
 
@@ -15,7 +15,12 @@ Mount-Pfad `/api/v1` (vormals `/odata`) — reine Pfad-Umbenennung, konsistent m
 | `/api/v1/RecurringPayments` | GET  | EntitySet     | Erkannte wiederkehrende Zahlungen, volle Query-Optionen                    | `app/api/routes/forecast.py`      |
 | `/api/v1/GetForecast`       | GET  | Function      | Basisprognose (`horizon`, `as_of`)                                         | `app/api/routes/forecast.py`      |
 | `/api/v1/Simulate`          | POST | Action        | Prognose mit Eingriffen: Baseline + Szenario + Diff in einer Antwort       | `app/api/routes/forecast.py`      |
-| `/api/v1/GetSubscriptions`  | GET  | Function      | Komplette [[Abo-Radar]]-Payload in einem Request *(uncommitted)*           | `app/api/routes/subscriptions.py` |
+| `/api/v1/assistant/ask`     | POST | — (REST)      | [[Future-Me Chatbot]]: Frage in natürlicher Sprache → Antwort mit Facts/Hebeln/Chart (Referenz: `apps/api/ASSISTANT_API.md`) | `app/api/routes/assistant.py` |
+| `/api/v1/assistant/suggestions` | GET | — (REST)    | Drei Vorschlagsfragen-Chips pro Horizont                                   | `app/api/routes/assistant.py`     |
+| `/api/v1/GraphNodes`        | GET  | EntitySet-artig | [[Kategorien-Explorer]]: flache, filterbare Graph-Knoten für Drilldown   | `app/api/routes/graph_odata.py`   |
+| `/api/v1/GraphMonths`       | GET  | EntitySet-artig | Verfügbare Monate für den Explorer (max. 12)                             | `app/api/routes/graph_odata.py`   |
+| `/api/v1/graph`(`/months`)  | GET  | — (REST)      | Alternative REST-Variante des Graphen (kompletter Baum), noch ohne Consumer | `app/api/routes/graph.py`        |
+| `/api/v1/GetSubscriptions`  | GET  | Function      | Komplette [[Abo-Radar]]-Payload in einem Request *(geplant — Quellcode verloren, siehe [[Subscription-Service]])* | `app/api/routes/subscriptions.py` (existiert nicht) |
 | `/health`                  | GET  | —             | Ausführlicher Smoke-Test (Zeilenzahlen, Lohntag, Töpfe, Beispiel-Prognose) | `app/main.py`                     |
 
 ## `RecurringPayments` — Querying

@@ -1,6 +1,6 @@
 ---
 tags: [feature]
-status: offen
+status: in-arbeit
 issue: 3
 ---
 
@@ -20,10 +20,15 @@ Die Transaktionsliste wird durch eine hierarchische **Circle-Packing-Visualisier
 - **`d3.pack()`, kein Force-Layout** — Positionen müssen deterministisch sein, sonst springt die Grafik bei jedem Slider-Schritt.
 - Händler-Normalisierung beim Import (Amazon-Varianten unter einem Knoten), Umbuchungen (`is_transfer`) aus beiden Teilbäumen ausgeschlossen (sonst ~CHF 41'850 doppelt gezählt), Rückerstattungen netto gegen Ausgaben gerechnet.
 
-## Geplante API
+## API (umgesetzt)
 
-`GET /api/v1/graph?month=YYYY-MM&mode=absolute|delta&flow=expense|income|both` liefert den kompletten Baum mit Inline-Transaktionsobjekten an den Blättern (kein Nachladen); `GET /api/v1/graph/months` die Slider-Monate.
+Es existieren **zwei parallele Varianten** über demselben `graph_service`:
+
+- **REST, wie im Issue:** `GET /api/v1/graph?month=YYYY-MM&mode=absolute|delta&flow=expense|income|both` liefert den kompletten Baum mit Inline-Transaktionsobjekten an den Blättern (kein Nachladen); `GET /api/v1/graph/months` die Slider-Monate.
+- **OData:** `GET /api/v1/GraphNodes` (flache, filterbare Knotenliste für Drilldown, mit `include_transactions`/`max_level` und vollen Query-Optionen) und `GET /api/v1/GraphMonths`.
+
+Sobald das Frontend gebaut wird, sollte das Team sich für **eine** Variante entscheiden und die andere entfernen.
 
 ## Status
 
-**Nicht begonnen.** Auf `main` existieren nur leere Platzhalter-Dateien: `app/api/routes/graph.py`, `app/services/graph_service.py`, `app/schemas/graph.py` (alle 0 Bytes). Der Branch `origin/3-feature-kategorien-explorer-…` ist identisch mit `main`. Vorarbeiten, die es schon gibt: Kategorien liegen in den Daten vor ([[Datengrundlage]]), Merchant-Extraktion existiert ([[Datenmodell & Repositories]]) — die im Issue geforderte Alias-Normalisierung (`models/merchant.py`) aber noch nicht.
+**Backend umgesetzt, auf `main` (PR #10):** `app/services/graph_service.py`, `app/schemas/graph.py`, `app/api/routes/graph.py`, `app/api/routes/graph_odata.py` sowie die im Issue geforderte Merchant-Alias-Normalisierung (`app/services/merchant_normalization.py`). **Frontend fehlt komplett** — keine Route, kein Consumer der Graph-Endpunkte; die Circle-Packing-Visualisierung ist noch zu bauen.

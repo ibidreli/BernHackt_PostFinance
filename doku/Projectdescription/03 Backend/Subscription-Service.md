@@ -1,11 +1,14 @@
 ---
 tags: [backend, algorithmus]
-status: in-arbeit
+status: offen
 ---
 
 # Subscription-Service
 
-Code: `app/services/subscription_service.py` (~325 Zeilen, **uncommitted**) · Schemas: `app/schemas/subscription.py` · Route: `app/api/routes/subscriptions.py` (`GET /api/v1/GetSubscriptions`) · Feature: [[Abo-Radar]]
+Geplanter Code: `app/services/subscription_service.py` (~325 Zeilen) · Schemas: `app/schemas/subscription.py` · Route: `app/api/routes/subscriptions.py` (`GET /api/v1/GetSubscriptions`) · Feature: [[Abo-Radar]]
+
+> [!warning] Quellcode verloren (Stand 22.08.2026)
+> Die Implementierung war nur uncommitted im Arbeitsverzeichnis und wurde nie eingecheckt; die Quelldateien existieren nicht mehr (nur `.pyc`-Bytecode in `__pycache__`). **Diese Notiz ist damit die Spezifikation für den Neubau** — oder die Verifikationsgrundlage für einen Dekompilierungs-Versuch.
 
 ## Ansatz
 
@@ -26,4 +29,4 @@ Im Schema (`app/schemas/subscription.py`) dokumentiert. Die wichtigsten: ein ein
 
 ## Status
 
-Backend implementiert, aber noch nicht committet ([[Projektstatus]]). Frontend (Balkenliste, Kopfzeile, Detailpanel, "In Prognose simulieren"-Button) steht aus.
+Backend-Quellcode verloren, muss neu gebaut werden ([[Projektstatus]], [[Abo-Radar]]). Frontend (Balkenliste, Kopfzeile, Detailpanel, "In Prognose simulieren"-Button) steht ebenfalls aus.

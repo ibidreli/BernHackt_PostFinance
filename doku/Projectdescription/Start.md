@@ -22,10 +22,10 @@ Hackathon-Projekt für **BernHackt 2026**, Challenge [[Challenge & Ziel|"Beyond 
 
 | Feature | Issue | Status |
 |---|---|---|
-| [[Zukunftsprognose & Simulation]] | [[Issue 4 – Zukunftsprognose]] | Backend fertig (gemergt), Frontend auf Branch |
-| [[Abo-Radar]] | [[Issue 6 – Abo-Radar]] | Backend in Arbeit (uncommitted) |
-| [[Future-Me Chatbot]] | [[Issue 5 – Future-Me Chatbot]] | Auf Feature-Branches umgesetzt |
-| [[Kategorien-Explorer]] | [[Issue 3 – Kategorien-Explorer]] | Nur leere Platzhalter-Dateien |
+| [[Zukunftsprognose & Simulation]] | [[Issue 4 – Zukunftsprognose]] | ✅ Backend und Frontend auf `main` |
+| [[Abo-Radar]] | [[Issue 6 – Abo-Radar]] | ⚠️ Backend-Quellcode verloren (nie committet) — Neubau nach [[Subscription-Service]] nötig; Frontend fehlt |
+| [[Future-Me Chatbot]] | [[Issue 5 – Future-Me Chatbot]] | ✅ LLM-Backend auf `main` (PR #12) + UI; `cached`-Modus für Demos ohne Key |
+| [[Kategorien-Explorer]] | [[Issue 3 – Kategorien-Explorer]] | Backend auf `main` (PR #10), Frontend fehlt |
 | [[Alerts]] | [[Issue 8 – Alerts]] | Definition erstellt, Umsetzung offen |
 
 ## 03 Backend
@@ -35,15 +35,15 @@ Hackathon-Projekt für **BernHackt 2026**, Challenge [[Challenge & Ziel|"Beyond 
 - [[Recurring-Detection]] — wie wiederkehrende Zahlungen erkannt werden
 - [[Drei-Töpfe-Klassifikation]] — fix / variabel / Ausreisser
 - [[Forecast-Service]] — der Prognosekern: Band, Engpass-Datum, Simulation
-- [[Subscription-Service]] — die Abo-Radar-Logik
-- [[Assistant-Pipeline]] — die 6-Schritte-Chatbot-Architektur (Branch)
+- [[Subscription-Service]] — die Abo-Radar-Logik (Spezifikation; Quellcode verloren)
+- [[Assistant-Pipeline]] — die 6-Schritte-Chatbot-Architektur (LLM, auf `main`)
 - [[OData-Layer]] — Envelope, `$filter`-Parser, CSDL-Metadata
 
 ## 04 Frontend
 
 - [[App-Shell & Navigation]] — Layout, Sidebar, Theme, Angular-Konventionen
-- [[Forecast-Seite]] — Prognose-UI mit SVG-Chart (Branch)
-- [[Assistant-Seite]] — Chat-UI mit Annahmen-Reglern (Branch)
+- [[Forecast-Seite]] — Prognose-UI mit SVG-Chart (auf `main`)
+- [[Assistant-Seite]] — Chat-UI mit Annahmen-Reglern (auf `main`)
 
 ## Nachschlagen
 

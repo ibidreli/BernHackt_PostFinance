@@ -18,7 +18,7 @@ API: `GET /api/v1/graph` (kompletter Baum mit Inline-Transaktionen an den Blätt
 
 ## Umsetzungsstand
 
-**Nicht begonnen** — nur leere Platzhalter (`app/api/routes/graph.py`, `app/services/graph_service.py`, `app/schemas/graph.py`); Branch `origin/3-…` identisch mit `main`. Siehe [[Projektstatus]].
+**Backend fertig, auf `main` (PR #10):** `graph_service.py`, `schemas/graph.py`, Merchant-Alias-Normalisierung (`merchant_normalization.py`) und zwei Routen-Varianten — REST (`/api/v1/graph`, `/api/v1/graph/months`) und OData (`/api/v1/GraphNodes`, `/api/v1/GraphMonths`). **Frontend nicht begonnen**, kein Consumer der Endpunkte. Siehe [[Kategorien-Explorer]] und [[Projektstatus]].
 
 ## Offene Fragen aus dem Issue
 

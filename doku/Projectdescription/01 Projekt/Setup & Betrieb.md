@@ -30,11 +30,11 @@ npm install
 npm start        # http://localhost:4200
 ```
 
-Node 24 (`.nvmrc`). Auf dem Branch `feature/prognosis` proxyt `proxy.conf.json` die Pfade `/api` und `/odata` auf `localhost:8000` — API muss dafür laufen. **Achtung, noch nicht nachgezogen:** Backend-seitig wurde `/odata` auf `origin/5-feature-future-me-chatbot-szenario-assistent` zu `/api/v1` umbenannt ([[OData-Layer]]); `proxy.conf.json` auf `feature/prognosis` muss beim Merge entsprechend angepasst werden (der separate `/odata`-Eintrag entfällt dann, da alles unter `/api` läuft).
+Node 24 (`.nvmrc`). `proxy.conf.json` proxyt `/api` auf `localhost:8000` — die API muss dafür laufen. Die frühere `/odata`-Route ist Geschichte: Backend-Mounts und Frontend-Clients sprechen seit der Umbenennung durchgehend `/api/v1` (Commits `24ba87e`, `0155594`; siehe [[OData-Layer]]).
 
-## Chatbot-Konfiguration (Branch `origin/5-…`)
+## Chatbot-Konfiguration
 
-Der [[Future-Me Chatbot]] braucht `apps/api/app/.env` (Vorlage: `.env.example`, wird **nicht** committet):
+Der [[Future-Me Chatbot]] (seit PR #12 auf `main`) braucht `apps/api/app/.env` (Vorlage: `.env.example`, wird **nicht** committet). **Achtung:** `docker-compose.yml` referenziert die Datei via `env_file` — ohne sie startet `docker compose up` gar nicht. Für lokale Demos ohne API-Key genügt eine `.env` mit `ASSISTANT_MODE=cached`.
 
 | Variable | Bedeutung |
 |---|---|
@@ -50,5 +50,4 @@ docker compose run --rm api python -m app.inspect_forecast      # auch: inspect_
 ```
 
 > [!warning] Bekannte Stolpersteine
-> - `README.md` und `API.md` verlinken auf `apps/api/STATUS.md` — die Datei heisst inzwischen `STATUS_FEATURE_NR_4_BACKEND.md` (Links broken, siehe [[Projektstatus]]).
 > - Fehlt die CSV beim Start oder ist sie defekt, crasht der Container hart (Exception im Lifespan-Hook) ohne freundliche Meldung.

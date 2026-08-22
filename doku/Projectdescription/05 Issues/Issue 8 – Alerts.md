@@ -6,7 +6,7 @@ issue: 8
 
 # Issue #8 — Alerts (Auffälligkeiten-Radar)
 
-GitHub-Issue: *noch nicht erstellt — Entwurf in [[Issue 8 – Alerts – GitHub-Entwurf]]* · Labels: `feature`, `frontend`, `backend`, `priority:medium` · Epic: Beyond the List · Abhängigkeit: Klassifikation/`outlier` aus [[Issue 4 – Zukunftsprognose]] wiederverwenden, nicht neu bauen · Feature-Note: [[Alerts]]
+GitHub-Issue: *noch nicht erstellt* · Labels: `feature`, `frontend`, `backend`, `priority:medium` · Epic: Beyond the List · Abhängigkeit: Klassifikation/`outlier` aus [[Issue 4 – Zukunftsprognose]] wiederverwenden, nicht neu bauen · Feature-Note: [[Alerts]]
 
 ## Kern der Spec
 
@@ -14,7 +14,7 @@ Eine eigene Seite «Auffälligkeiten» (Route `/alerts`), die wichtige Ereigniss
 
 Gemeinsame Guards gegen Fehlalarme: nur Ausgaben, interne Umbuchungen (`Sonstige Geldtransfers`, `Überträge`) ausgeschlossen, alle Schwellen env-überschreibbar. Leitsatz wie beim [[Abo-Radar]]: **Fehlalarme kosten Vertrauen.**
 
-API: OData-EntitySet `GET /odata/Alerts` (deterministisch, im `lifespan` berechnet, volle `$filter`/`$orderby`/`$top`/`$count`-Unterstützung). Schema sprach-neutral mit Enums; die deutschen «Warum sehe ich das?»-Sätze rendert das Frontend. Seite mit KPI-Kacheln (Counts pro Severity), Typ-/Schweregrad-Filter, Kartenliste und Empty-State. Details: [[Alerts]].
+API: OData-EntitySet `GET /api/v1/Alerts` (deterministisch, im `lifespan` berechnet, volle `$filter`/`$orderby`/`$top`/`$count`-Unterstützung). Schema sprach-neutral mit Enums; die deutschen «Warum sehe ich das?»-Sätze rendert das Frontend. Seite mit KPI-Kacheln (Counts pro Severity), Typ-/Schweregrad-Filter, Kartenliste und Empty-State. Details: [[Alerts]].
 
 ## Umsetzungsstand
 

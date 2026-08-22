@@ -1,11 +1,11 @@
 # API-Dokumentation: Zukunftsprognose & Szenario-Simulation
 
-Diese Datei ist die kompakte Referenz für die drei Endpunkte. Für Details zu Bugs, Grenzen und Design-Entscheidungen siehe [STATUS.md](STATUS.md) — dort steht auch, *warum* bestimmte Dinge so gebaut sind, wie sie sind.
+Diese Datei ist die kompakte Referenz für die drei Endpunkte. Für Details zu Bugs, Grenzen und Design-Entscheidungen siehe [STATUS_FEATURE_NR_4_BACKEND.md](STATUS_FEATURE_NR_4_BACKEND.md) — dort steht auch, *warum* bestimmte Dinge so gebaut sind, wie sie sind.
 
 ## Grundlagen
 
 - **Keine Datenbank.** Die Bank-Export-CSV ist die einzige Datenquelle, beim Start einmal in den Speicher geladen. Kein Persistenz-Layer, keine Migration.
-- **OData v4, pragmatisches Subset.** `OData-Version: 4.0`-Header auf jeder Antwort, `@odata.context`-Envelope, OData-JSON-Error-Format (`{"error": {"code", "message"}}`). Kein `$batch`, keine Atom/XML-Repräsentation. Details: [STATUS.md, T9](STATUS.md#t9--odata-layer).
+- **OData v4, pragmatisches Subset.** `OData-Version: 4.0`-Header auf jeder Antwort, `@odata.context`-Envelope, OData-JSON-Error-Format (`{"error": {"code", "message"}}`). Kein `$batch`, keine Atom/XML-Repräsentation. Details: [STATUS_FEATURE_NR_4_BACKEND.md, T9](STATUS_FEATURE_NR_4_BACKEND.md#t9--odata-layer).
 - **Kein Zins, keine Rendite.** `assumptions.interest_applied` ist immer `false`. Die Hochrechnung ist reine Summierung.
 - **Interaktiv testen:** `/docs` (Swagger UI) nach `docker compose up` — siehe [README.md](../../README.md) für Run-Anleitung.
 - **CSDL-Dokument:** `GET /api/v1/$metadata`.
@@ -36,7 +36,7 @@ curl "http://localhost:8000/api/v1/RecurringPayments?\$filter=is_active%20eq%20t
 - Literale: `'string'`, Zahl, `true`/`false`, `null`
 - Beispiele: `is_active eq true`, `flow eq 'expense'`, `amount_chf gt 100`, `not (is_active eq true)`
 
-**Wichtig:** `recurring_id` ist **nicht** der Merchant-Name, sondern eine zusammengesetzte ID (`merchant::category_main::flow`), z. B. `"NETFLIX.COM::Wohnen::expense"`. Grund: Merchant-Strings sind nicht eindeutig (siehe STATUS.md, T7 — "LASTSCHRIFT", "PAYPAL" u. a. stehen für mehrere unabhängige Zahlungen). Diese ID wird für `cancel_recurring`/`adjust_recurring` gebraucht.
+**Wichtig:** `recurring_id` ist **nicht** der Merchant-Name, sondern eine zusammengesetzte ID (`merchant::category_main::flow`), z. B. `"NETFLIX.COM::Wohnen::expense"`. Grund: Merchant-Strings sind nicht eindeutig (siehe STATUS_FEATURE_NR_4_BACKEND.md, T7 — "LASTSCHRIFT", "PAYPAL" u. a. stehen für mehrere unabhängige Zahlungen). Diese ID wird für `cancel_recurring`/`adjust_recurring` gebraucht.
 
 `$select` projiziert auf ein Feld-Subset — die Response hat dann kein festes Schema mehr, deshalb ist dieser Endpunkt in Swagger bewusst nicht strikt typisiert (im Gegensatz zu den anderen beiden).
 
@@ -128,11 +128,11 @@ curl -X POST "http://localhost:8000/api/v1/Simulate" \
 | `add_recurring` | `label`, `amount_chf`, `interval`, `start_date` | — |
 | `one_off` | `label`, `amount_chf`, `date` | — (Feature 3: "Auto für 30'000?") |
 
-`amount_chf` ist bei `one_off` immer eine **positive Ausgaben-Magnitude** — kein Vorzeichen-Trick für Einnahmen (gefundener Bug, siehe STATUS.md T7).
+`amount_chf` ist bei `one_off` immer eine **positive Ausgaben-Magnitude** — kein Vorzeichen-Trick für Einnahmen (gefundener Bug, siehe STATUS_FEATURE_NR_4_BACKEND.md T7).
 
-**"Kantine halbieren" ist bewusst nicht abbildbar** — keiner der vier Typen erlaubt eine Topf-2-Kategorie-Anpassung, das wurde mit dem Team so bestätigt (siehe STATUS.md T7).
+**"Kantine halbieren" ist bewusst nicht abbildbar** — keiner der vier Typen erlaubt eine Topf-2-Kategorie-Anpassung, das wurde mit dem Team so bestätigt (siehe STATUS_FEATURE_NR_4_BACKEND.md T7).
 
-**`diff`-Vorzeichen-Konvention:** durchgehend `scenario - baseline`, **positiv = besser** (mehr Saldo, mehr Puffer-Tage). Das weicht bewusst vom mehrdeutigen Beispiel in der ursprünglichen Issue-JSON ab — Begründung in STATUS.md, T7.
+**`diff`-Vorzeichen-Konvention:** durchgehend `scenario - baseline`, **positiv = besser** (mehr Saldo, mehr Puffer-Tage). Das weicht bewusst vom mehrdeutigen Beispiel in der ursprünglichen Issue-JSON ab — Begründung in STATUS_FEATURE_NR_4_BACKEND.md, T7.
 
 ---
 
@@ -164,85 +164,17 @@ Validierungsfehler (422) enthalten zusätzlich `details` mit Feld-Pfaden.
 
 ## Bekannte Grenzen, kurz
 
-Vollständige Liste mit Begründung in [STATUS.md](STATUS.md). Die wichtigsten:
+Vollständige Liste mit Begründung in [STATUS_FEATURE_NR_4_BACKEND.md](STATUS_FEATURE_NR_4_BACKEND.md). Die wichtigsten:
 
 - `$filter` deckt kein `contains`/`startswith` ab.
 - `$metadata` ist statisch, nicht aus den Schemas generiert.
 - `GetForecast` nutzt Query-Parameter statt strikter OData-Klammer-Syntax (`GetForecast(horizon='...')`).
-- Band wächst linear über die Zeit, nicht mit gedämpfter Zeitskalierung.
+- Band wächst mit sqrt-gedämpfter Zeitskalierung — eine Heuristik, nicht statistisch kalibriert (siehe `forecast_service._build_series`).
 
 ---
 
-# Assistenz (`/api/v1`)
+# Assistenz
 
-Zwei weitere OData-Ressourcen auf demselben Service - der ganze Backend spricht
-ein Protokoll, es gibt keinen zweiten REST-Zweig daneben.
-
-`Ask` ist eine Action und keine Function, aus demselben Grund wie `Simulate`:
-OData-Functions nehmen ihre Parameter in der URL, der Request trägt aber ein
-verschachteltes `assumptions`/`context`-Objekt. Seiteneffekte hat keine der
-beiden - der Service ist durchgehend read-only.
-
-**Die KI-Variante ist noch nicht gebaut.** Diese Routen sind der deterministische
-Pfad: Zahlen aus `forecast_service`, Formulierung aus Templates. Die Seite
-funktioniert damit heute, und das Modell wird später hinter demselben Contract in
-`intent_service` und den Formulierungsschritt eingesetzt.
-
-## `POST /api/v1/Ask`
-
-Beantwortet genau drei Fragetypen. Alles andere → `status: "unsupported"`, ohne
-Rateversuch.
-
-| `intent`        | Frage                                       | Chart-Typ           |
-| --------------- | ------------------------------------------- | ------------------- |
-| `affordability` | "Kann ich mir ein Auto für 30'000 leisten?"  | `wealth_over_time`  |
-| `what_if`       | "Was wäre, wenn ich Gastronomie halbiere?"   | `before_after`      |
-| `time_to_goal`  | "Wann habe ich 20'000 zusammen?"             | `goal_progress`     |
-
-`status` ist nie ein blosses Ja oder Nein: `yes` (Ziel erreichbar, Restpuffer
-≥ 3 Monatsausgaben), `tight` (erreichbar, Puffer darunter, mit Wartezeit),
-`no_unless` (Fehlbetrag, nötiger Monatsbetrag, Hebel) — dazu
-`needs_clarification` und `unsupported`.
-
-Horizonte: `present` (aktuelle Lohnperiode, die einzige Stufe ohne Annahmen —
-die Kurve kommt direkt aus `GetForecast(horizon=next_salary)`), `1y`, `5y`, `10y`.
-Ein Horizont im Fragetext schlägt den Umschalter; der tatsächlich verwendete
-steht als `horizon` in der Antwort.
-
-**Wo gerechnet wird.** Ausschliesslich in `forecast_service` — derselben Funktion,
-die auch der Slider aus Feature 2 aufruft. `forecast_service` endet bei 365 Tagen;
-für 5 und 10 Jahre extrapoliert `assistant_service` dessen Monatsraten unter den
-drei sichtbaren Annahmen weiter (Formel im Modul-Docstring). Kein Zins, keine
-Rendite: `assumptions_used.interest_applied` ist immer `false`.
-
-**Wo nicht gerechnet wird.** Die Extraktion (`intent_service`) liefert nur
-Parameter, die Formulierung baut den Text aus `facts` per Template. `_verify_numbers`
-prüft danach, dass jeder CHF-Betrag im Text einem Feld aus `facts` oder `levers`
-entspricht; bei Abweichung greift die neutrale Template-Formulierung. Die
-äquivalenten LLM-Contracts liegen versioniert unter [`prompts/`](../../prompts/).
-
-**Hebel** stammen ausschliesslich aus variablen Kategorien (Topf 2), abzüglich der
-nicht disponiblen (`Steuern`, `Versicherungen`, `Sonstige Geldtransfers`) — "spar
-bei der Krankenkasse" ist kein Rat. `potential_chf` ist pauschal 50 % der Kategorie.
-
-**Rückfragen** sind fest definiert, nicht vom Modell erfunden, und maximal eine pro
-Anfrage: fehlender Betrag, und Bar/Leasing ab CHF 10'000. Wird eine Rückfrage über
-`context.pending_clarification` beantwortet, wird sie nicht erneut gestellt.
-
-## `GET /api/v1/Suggestions?horizon=5y`
-
-Drei Vorschlagsfragen als Chips, abhängig vom Horizont. Collection-typisierte
-Function, die Fragen stehen also unter `value`. Query-Parameter statt strikter
-`Suggestions(horizon='5y')`-Syntax, konsistent mit `GetForecast`.
-
-## Bekannte Grenzen
-
-- Extraktion und Formulierung sind regelbasiert, nicht LLM-gestützt — gleicher
-  Contract, kein API-Key, kein Timeout in der Live-Demo. `prompts/` dokumentiert
-  den LLM-Ersatz; `source` ist entsprechend `"template"`. Die eigentlichen
-  KI-Routen stehen noch aus.
-- Leasing vereinfacht: 20 % Anzahlung, Rest als monatliche Rate über den Horizont
-  (in `assumptions_used.notes` benannt).
-- Folgefragen mit Bezug auf die vorherige Antwort ("und wenn ich 2 Jahre länger
-  warte?") sind nicht im Scope.
-- Die `tight`-Schwelle von 3 Monatsausgaben ist ein Startwert, nicht kalibriert.
+Der Future-Me Chatbot (`POST /api/v1/assistant/ask`, `GET /api/v1/assistant/suggestions`)
+ist bewusst **REST statt OData** (folgt dem Issue-Contract wörtlich) und in einer
+eigenen Referenz dokumentiert: [ASSISTANT_API.md](ASSISTANT_API.md).

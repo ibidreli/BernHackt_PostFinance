@@ -26,7 +26,7 @@ Leitsatz wie beim [[Abo-Radar]]: **Fehlalarme kosten Vertrauen.** Alle Schwellen
 
 ## API
 
-OData-EntitySet **`GET /odata/Alerts`** — bewusst EntitySet statt Function: eine parameterlose, deterministische Collection wie `RecurringPayments`, damit `$filter`/`$orderby`/`$top`/`$count` gratis über `apply_query_options` funktionieren. Berechnung einmal im `lifespan`, abgelegt als `app.state.alerts`.
+OData-EntitySet **`GET /api/v1/Alerts`** — bewusst EntitySet statt Function: eine parameterlose, deterministische Collection wie `RecurringPayments`, damit `$filter`/`$orderby`/`$top`/`$count` gratis über `apply_query_options` funktionieren. Berechnung einmal im `lifespan`, abgelegt als `app.state.alerts`.
 
 Das Schema ist sprach-neutral (Enums, keine deutschen Sätze — die rendert das Frontend, konsistent mit allen bestehenden Endpoints, und `$filter=type eq 'duplicate_charge'` bleibt sauber):
 

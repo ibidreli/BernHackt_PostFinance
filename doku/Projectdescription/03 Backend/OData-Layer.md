@@ -22,7 +22,7 @@ Handgeschriebener Tokenizer + rekursiver Abstiegs-Parser: `eq ne gt ge lt le`, `
 
 ## `metadata.py` — das CSDL-Dokument
 
-Statisch handgeschriebenes XML für `GET /api/v1/$metadata`: EntityType `RecurringPayment`, Complex Types, `GetForecast`-Function, `Simulate`-Action, EntityContainer — plus (uncommitted) die `Subscription*`-Typen und die `GetSubscriptions`-Function für den [[Abo-Radar]]. **Muss bei Schema-Änderungen manuell nachgezogen werden** (nicht aus den Pydantic-Schemas generiert) — bekannte Drift-Gefahr, im Moduldocstring vermerkt.
+Statisch handgeschriebenes XML für `GET /api/v1/$metadata`: EntityTypes `RecurringPayment`, `GraphNode`, `GraphMonth`, Complex Types, die Functions/Actions `GetForecast`/`Simulate`/`Ask`/`Suggestions`, EntityContainer. (Die `Subscription*`-Typen und die `GetSubscriptions`-Function gehörten zum verlorenen uncommitted [[Abo-Radar]]-Code.) **Muss bei Schema-Änderungen manuell nachgezogen werden** (nicht aus den Pydantic-Schemas generiert) — bekannte Drift-Gefahr, im Moduldocstring vermerkt; die REST-Graph-Routen (`/api/v1/graph*`) fehlen im CSDL ganz.
 
 ## Bewusste Pragmatismen
 

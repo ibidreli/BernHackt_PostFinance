@@ -1,12 +1,12 @@
 ---
 tags: [backend, ai, algorithmus]
 status: fertig
-branch: 5-feature-future-me-chatbot-szenario-assistent
+branch: main
 ---
 
 # Assistant-Pipeline
 
-Code: `app/services/assistant_service.py`, `intent_service.py`, `answer_service.py`, `chart_service.py`, `formulation_service.py`, `verification_service.py`, `cache_service.py`, `llm_client.py` · Schemas: `app/schemas/assistant.py` · Prompts: `app/prompts/intent_extraction_v1.md`, `answer_formulation_v1.md` · Feature: [[Future-Me Chatbot]] · Details/Bugs: `apps/api/STATUS_FEATURE_NR_5_BACKEND.md`
+Code (auf `main`, gemergt via PR #12): `app/services/assistant_service.py`, `intent_service.py`, `answer_service.py`, `chart_service.py`, `formulation_service.py`, `verification_service.py`, `cache_service.py`, `llm_client.py` · Schemas: `app/schemas/assistant.py` · Prompts: `app/prompts/intent_extraction_v1.md`, `answer_formulation_v1.md` · Feature: [[Future-Me Chatbot]] · Details/Bugs: `apps/api/STATUS_FEATURE_NR_5_BACKEND.md`
 
 ## Die sechs Schritte
 

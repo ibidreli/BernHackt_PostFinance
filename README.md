@@ -49,7 +49,7 @@ a rebuild.
 
 API reference: [`apps/api/API.md`](apps/api/API.md) (endpoints, `$filter` grammar,
 error format). Implementation status, found bugs, and known limitations, kept up to
-date per build step: [`apps/api/STATUS.md`](apps/api/STATUS.md).
+date per build step: [`apps/api/STATUS_FEATURE_NR_4_BACKEND.md`](apps/api/STATUS_FEATURE_NR_4_BACKEND.md).
 
 For local development without Docker:
 

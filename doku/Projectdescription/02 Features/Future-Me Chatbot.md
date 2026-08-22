@@ -1,13 +1,13 @@
 ---
 tags: [feature, ai]
-status: backend-fertig
+status: umgesetzt
 issue: 5
-branch: 5-feature-future-me-chatbot-szenario-assistent
+branch: main
 ---
 
 # Future-Me Chatbot (Szenario-Assistent)
 
-Spec: [[Issue 5 – Future-Me Chatbot]] · Backend: [[Assistant-Pipeline]] · UI: [[Assistant-Seite]] (inkompatibel, siehe Status unten) · rechnet mit dem [[Forecast-Service]]
+Spec: [[Issue 5 – Future-Me Chatbot]] · Backend: [[Assistant-Pipeline]] · UI: [[Assistant-Seite]] · rechnet mit dem [[Forecast-Service]]
 
 ## Die Idee
 
@@ -29,8 +29,8 @@ Nutzer:innen fragen in natürlicher Sprache — *"Kann ich mir in 5 Jahren ein A
 
 ## Status
 
-**Backend fertig** auf Branch `5-feature-future-me-chatbot-szenario-assistent`, live gegen die echte OpenAI-API und die echten Sample-Daten getestet (`apps/api/STATUS_FEATURE_NR_5_BACKEND.md`). Endpunkte: `POST /api/v1/assistant/ask`, `GET /api/v1/assistant/suggestions`.
+**Backend fertig und auf `main` gemergt** (PR #12), live gegen die echte OpenAI-API und die echten Sample-Daten getestet (`apps/api/STATUS_FEATURE_NR_5_BACKEND.md`). Endpunkte: `POST /api/v1/assistant/ask`, `GET /api/v1/assistant/suggestions` (REST, nicht OData — folgt dem Issue-Contract wörtlich; Referenz: `apps/api/ASSISTANT_API.md`).
 
-Es gab zwischenzeitlich eine zweite, unabhängige Chatbot-Implementierung auf `origin/feature/prognosis` (regelbasiert statt LLM, dort selbst als Platzhalter markiert). Beim Merge mit `main` wurde entschieden, die hier beschriebene (vollständig getestete, LLM-integrierte) Implementierung zu behalten.
+Es gab zwischenzeitlich eine zweite, unabhängige Chatbot-Implementierung auf `origin/feature/prognosis` (regelbasiert statt LLM, dort selbst als Platzhalter markiert). Beim Merge mit `main` wurde entschieden, die hier beschriebene (vollständig getestete, LLM-integrierte) Implementierung zu behalten. Deren Testdatei `tests/test_assistant.py` wurde dabei mit entfernt — auf `main` gibt es aktuell keine automatisierten Tests, Verifikation läuft über die `inspect_*`-Skripte.
 
-**Offener Punkt:** Das bestehende Frontend ([[Assistant-Seite]]) ruft die Endpunkte der verworfenen Implementierung (`/api/v1/Ask`) auf, nicht die hier aktiven (`/api/v1/assistant/ask`) — muss vor dem Pitch angepasst werden.
+Das Frontend ([[Assistant-Seite]]) wurde am 22.08.2026 auf die neuen Endpunkte und das neue Response-Schema umgestellt (diskriminierte Chart-Typen, `suggestions`-Feld, Fehleranzeige für 502/504, `conversation_id` für Folgefragen).

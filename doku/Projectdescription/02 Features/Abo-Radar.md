@@ -1,6 +1,6 @@
 ---
 tags: [feature]
-status: in-arbeit
+status: offen
 issue: 6
 ---
 
@@ -33,4 +33,7 @@ Balken = Zahlung erfolgte; Farbwechsel = Preisänderung; frühes Ende = weggefal
 
 ## Status
 
-Backend ist implementiert, liegt aber **uncommitted auf `main`**: `app/api/routes/subscriptions.py`, `app/schemas/subscription.py`, `app/services/subscription_service.py` plus Erweiterungen in `main.py` und `odata/metadata.py`. Abweichend vom Issue-Contract (`GET /api/v1/subscriptions`) ist der Endpunkt als OData-Function **`GET /api/v1/GetSubscriptions`** umgesetzt und liefert die ganze Seite (Liste + Detail-Buchungen + Kopfzeilen-KPIs) in einem Request. Frontend existiert noch nicht.
+> [!warning] Backend-Quellcode verloren (Stand 22.08.2026)
+> Die Implementierung (`app/api/routes/subscriptions.py`, `app/schemas/subscription.py`, `app/services/subscription_service.py` plus Erweiterungen in `main.py` und `odata/metadata.py`) lag nur **uncommitted** im Arbeitsverzeichnis und wurde nie eingecheckt — die Quelldateien existieren nicht mehr. Übrig ist einzig kompilierter Bytecode in `__pycache__` (`subscription_service.cpython-312.pyc` u. a.). Wiederherstellung per Dekompilierung oder Neubau nach [[Subscription-Service]] ist ein separates Vorhaben; jene Notiz bleibt als Spezifikation gültig.
+
+Geplanter Endpunkt (abweichend vom Issue-Contract `GET /api/v1/subscriptions`): OData-Function **`GET /api/v1/GetSubscriptions`**, die die ganze Seite (Liste + Detail-Buchungen + Kopfzeilen-KPIs) in einem Request liefert. Frontend existiert noch nicht — `apps/web/src/app/pages/abo-radar/` ist ein leeres Verzeichnis ohne Route.

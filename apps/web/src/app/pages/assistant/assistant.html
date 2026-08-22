@@ -31,18 +31,24 @@
           <div data-question class="chat chat-end animate-rise-in">
             <div class="chat-bubble bg-primary text-pf-teal">{{ message.text }}</div>
           </div>
+        } @else if (message.role === 'error') {
+          <div class="animate-rise-in rounded-xl border border-danger/40 bg-danger/10 p-4 text-sm text-danger" role="alert">
+            {{ message.text }}
+          </div>
         } @else {
           <article class="animate-rise-in rounded-xl border border-border bg-surface p-4">
             <div class="flex items-start justify-between gap-3">
               <span class="rounded-full px-2 py-0.5 text-xs font-medium" [class]="badge(message.status).classes">
                 {{ badge(message.status).label }}
               </span>
-              @if (message.facts) {
-                <span class="text-xs text-muted-foreground">
-                  {{ message.facts.months_remaining }}
-                  {{ message.facts.months_remaining === 1 ? 'Monat' : 'Monate' }} ·
-                  {{ chf(message.facts.projected_chf) }}
-                </span>
+              @if (message.facts; as facts) {
+                @if (facts.months_remaining !== null && facts.projected_chf !== null) {
+                  <span class="text-xs text-muted-foreground">
+                    {{ facts.months_remaining }}
+                    {{ facts.months_remaining === 1 ? 'Monat' : 'Monate' }} ·
+                    {{ chf(facts.projected_chf) }}
+                  </span>
+                }
               }
             </div>
 
@@ -92,14 +98,13 @@
             }
 
             <!-- Annahmen im Klartext unter jeder Antwort -->
-            <p class="mt-4 border-t border-border pt-3 text-xs text-muted-foreground">
-              Lohnwachstum {{ message.assumptions_used.salary_growth_pct }} %, Inflation
-              {{ message.assumptions_used.inflation_pct }} %, Sparquote
-              {{ message.assumptions_used.savings_rate_pct }} %. Keine Zins- oder Renditeannahme.
-              @for (note of message.assumptions_used.notes; track note) {
-                {{ note }}
-              }
-            </p>
+            @if (message.assumptions_used; as assumptions) {
+              <p class="mt-4 border-t border-border pt-3 text-xs text-muted-foreground">
+                Lohnwachstum {{ assumptions.salary_growth_pct }} %, Inflation
+                {{ assumptions.inflation_pct }} %, Sparquote
+                {{ assumptions.savings_rate_pct }} %. Keine Zins- oder Renditeannahme.
+              </p>
+            }
           </article>
         }
       } @empty {

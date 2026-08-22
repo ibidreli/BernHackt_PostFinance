@@ -25,7 +25,7 @@ Die App beantwortet **"Wie viel kann ich noch ausgeben?"** — nicht mit einer P
 
 ## Status
 
-Backend auf `main` fertig und in einer QA-Runde end-to-end gegen alle Akzeptanzkriterien getestet (Details und gefundene Bugs: [[Forecast-Service]], [[Projektstatus]]). Frontend auf `origin/feature/prognosis` ([[Forecast-Seite]]). Der Prognosekern ist eine reine Funktion ohne HTTP-Abhängigkeit — Voraussetzung dafür, dass der [[Future-Me Chatbot]] ihn mitbenutzen kann.
+Backend auf `main` fertig und in einer QA-Runde end-to-end gegen alle Akzeptanzkriterien getestet (Details und gefundene Bugs: [[Forecast-Service]], [[Projektstatus]]). Frontend ebenfalls auf `main` ([[Forecast-Seite]]). Der Prognosekern ist eine reine Funktion ohne HTTP-Abhängigkeit — Voraussetzung dafür, dass der [[Future-Me Chatbot]] ihn mitbenutzen kann.
 
 ## Bewusste Abweichungen vom Issue
 

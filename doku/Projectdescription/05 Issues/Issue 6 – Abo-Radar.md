@@ -1,6 +1,6 @@
 ---
 tags: [issue]
-status: in-arbeit
+status: offen
 issue: 6
 ---
 
@@ -16,7 +16,7 @@ API laut Issue: `GET /api/v1/subscriptions`, ein Endpunkt für alles.
 
 ## Umsetzungsstand
 
-Backend implementiert, aber **uncommitted auf `main`** ([[Projektstatus]]): [[Subscription-Service]] mit Statuslogik (dokumentierte Präzedenz, CV-Schwelle 10 %), 12-Monats-Grid, Kennzahlen und Fixkostentag. Abweichung: Endpunkt als OData-Function `GET /api/v1/GetSubscriptions` statt schlichtem REST `/api/v1/subscriptions` (konsistent mit dem [[OData-Layer]]); weitere dokumentierte Abweichungen im Schema. Frontend fehlt noch komplett.
+**Backend-Quellcode verloren** (Stand 22.08.2026, [[Projektstatus]]): Die Implementierung — [[Subscription-Service]] mit Statuslogik (dokumentierte Präzedenz, CV-Schwelle 10 %), 12-Monats-Grid, Kennzahlen und Fixkostentag — war nur uncommitted und wurde nie eingecheckt; übrig ist nur `.pyc`-Bytecode. Muss nach der [[Subscription-Service]]-Spezifikation neu gebaut (oder dekompiliert) werden. Geplante Abweichung bleibt: Endpunkt als OData-Function `GET /api/v1/GetSubscriptions` statt schlichtem REST `/api/v1/subscriptions` (konsistent mit dem [[OData-Layer]]). Frontend fehlt noch komplett.
 
 ## Offene Fragen aus dem Issue
 

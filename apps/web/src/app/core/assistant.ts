@@ -4,16 +4,22 @@ import { firstValueFrom } from 'rxjs';
 
 export type Horizon = 'present' | '1y' | '5y' | '10y';
 export type Status = 'yes' | 'tight' | 'no_unless' | 'needs_clarification' | 'unsupported';
-export type ChartType = 'wealth_over_time' | 'goal_progress' | 'before_after';
+export type Intent = 'affordability' | 'what_if' | 'time_to_goal' | 'unsupported';
 
+/** Which fields are populated depends on intent/status; unused ones stay null. */
 export interface Facts {
-  target_chf: number;
-  projected_chf: number;
-  gap_chf: number;
-  required_monthly_chf: number;
-  months_remaining: number;
-  buffer_after_months: number;
+  target_chf: number | null;
+  projected_chf: number | null;
+  gap_chf: number | null;
+  required_monthly_chf: number | null;
+  months_remaining: number | null;
+  buffer_after_months: number | null;
   wait_months: number | null;
+  goal_date: string | null;
+  goal_date_earliest: string | null;
+  goal_date_latest: string | null;
+  impact_monthly_chf: number | null;
+  impact_cumulative_chf: number | null;
 }
 
 export interface Lever {
@@ -27,22 +33,39 @@ export interface ChartPoint {
   expected_chf: number;
   lower_chf: number;
   upper_chf: number;
-  baseline_chf: number | null;
 }
 
-export interface ChartSpec {
-  type: ChartType;
+export interface WealthOverTimeChart {
+  type: 'wealth_over_time';
   series: ChartPoint[];
   target_line_chf: number | null;
   crossing_date: string | null;
 }
+
+export interface GoalProgressChart {
+  type: 'goal_progress';
+  series: ChartPoint[];
+  target_chf: number;
+  expected_date: string | null;
+  earliest_date: string | null;
+  latest_date: string | null;
+}
+
+export interface BeforeAfterChart {
+  type: 'before_after';
+  baseline_series: ChartPoint[];
+  scenario_series: ChartPoint[];
+  diff_at_horizon_chf: number;
+}
+
+/** Discriminated on `type` — the backend picks one of three fixed shapes. */
+export type ChartSpec = WealthOverTimeChart | GoalProgressChart | BeforeAfterChart;
 
 export interface AssumptionsUsed {
   salary_growth_pct: number;
   inflation_pct: number;
   savings_rate_pct: number;
   interest_applied: boolean;
-  notes: string[];
 }
 
 export interface Clarification {
@@ -52,20 +75,23 @@ export interface Clarification {
 }
 
 export interface Answer {
-  intent: string | null;
+  intent: Intent;
   status: Status;
-  horizon: Horizon;
   answer: string;
   facts: Facts | null;
   levers: Lever[];
   chart: ChartSpec | null;
-  assumptions_used: AssumptionsUsed;
+  /** null when status is needs_clarification or unsupported. */
+  assumptions_used: AssumptionsUsed | null;
   clarification: Clarification | null;
-  source: string;
+  source: 'live' | 'cached';
 }
 
 /** `text` is what the chat shows, `sent` what the backend parsed. */
-export type Message = { role: 'user'; text: string; sent: string } | ({ role: 'bot' } & Answer);
+export type Message =
+  | { role: 'user'; text: string; sent: string }
+  | { role: 'error'; text: string }
+  | ({ role: 'bot' } & Answer);
 
 export const HORIZONS: readonly { value: Horizon; label: string }[] = [
   { value: 'present', label: 'Heute' },
@@ -74,7 +100,7 @@ export const HORIZONS: readonly { value: Horizon; label: string }[] = [
   { value: '10y', label: '10 Jahre' },
 ];
 
-const api = '/api/v1';
+const api = '/api/v1/assistant';
 
 /**
  * Owns the conversation and the three assumption sliders.
@@ -82,14 +108,16 @@ const api = '/api/v1';
  * Deliberately thin: it holds no financial logic at all. Every number
  * shown in the UI arrives from the backend, which computes it through
  * `forecast_service` - the same function the Prognose page's
- * `GetForecast`/`Simulate` calls go through.
- *
- * The answers are deterministic for now; the AI-backed routes are not
- * built yet and will land behind this same contract.
+ * `GetForecast`/`Simulate` calls go through. The LLM only interprets the
+ * question and phrases the answer; a 502/504 from either call surfaces
+ * here as an error message in the transcript, never a silent fallback.
  */
 @Service()
 export class Assistant {
   private readonly http = inject(HttpClient);
+
+  /** One conversation per page visit - lets the backend resolve follow-ups. */
+  private readonly conversationId = crypto.randomUUID();
 
   readonly horizon = signal<Horizon>('5y');
   readonly salaryGrowthPct = signal(1);
@@ -108,13 +136,16 @@ export class Assistant {
   });
 
   async loadSuggestions(): Promise<void> {
-    // Collection-typed api Function: the questions arrive under `value`.
-    const response = await firstValueFrom(
-      this.http.get<{ value: string[] }>(`${api}/Suggestions`, {
-        params: { horizon: this.horizon() },
-      }),
-    );
-    this.suggestions.set(response.value);
+    try {
+      const response = await firstValueFrom(
+        this.http.get<{ suggestions: string[] }>(`${api}/suggestions`, {
+          params: { horizon: this.horizon() },
+        }),
+      );
+      this.suggestions.set(response.suggestions);
+    } catch {
+      // Keep the previous chips - suggestions are a convenience, not data.
+    }
   }
 
   /**
@@ -129,7 +160,7 @@ export class Assistant {
     this.pending.set(true);
     try {
       const answer = await firstValueFrom(
-        this.http.post<Answer>(`${api}/Ask`, {
+        this.http.post<Answer>(`${api}/ask`, {
           message,
           horizon: this.horizon(),
           assumptions: {
@@ -137,29 +168,32 @@ export class Assistant {
             inflation_pct: this.inflationPct(),
             savings_rate_pct: this.savingsRatePct(),
           },
-          context: { conversation_id: null, pending_clarification: pendingClarification },
+          context: { conversation_id: this.conversationId, pending_clarification: pendingClarification },
         }),
       );
-      // A horizon named in the question wins over the switcher, and the
-      // switcher visibly follows - the issue's edge case.
-      this.horizon.set(answer.horizon);
       this.messages.update((messages) => [...messages, { role: 'bot', ...answer }]);
+    } catch (error) {
+      this.messages.update((messages) => [...messages, { role: 'error', text: describe(error) }]);
     } finally {
       this.pending.set(false);
     }
   }
 
   /**
-   * A clarification button carries no question of its own - "Bar" alone
-   * is not a supported question. The original question is resent with
-   * the chosen option appended, while the chat shows just the option.
+   * A clarification answer is just the chosen option - the backend
+   * resolves it against the open clarification via `conversation_id`
+   * plus `pending_clarification`, without a second LLM call.
    */
   async answerClarification(option: string): Promise<void> {
-    const question = this.lastQuestion();
-    await this.ask(question ? `${question} ${option}` : option, option);
+    await this.ask(option);
   }
 
-  /** Re-runs the last question so a moved slider is felt immediately. */
+  /**
+   * Re-runs the last real question so a moved slider is felt
+   * immediately. A clarification answer ("Bar") is not a question of
+   * its own, so replay goes back to the question that triggered it -
+   * the backend then asks the clarification again.
+   */
   async replay(): Promise<void> {
     const question = this.lastQuestion();
     if (!question) return;
@@ -168,7 +202,25 @@ export class Assistant {
   }
 
   private lastQuestion(): string | null {
-    const asked = this.messages().filter((m) => m.role === 'user');
-    return asked.at(-1)?.sent ?? null;
+    const messages = this.messages();
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const message = messages[i];
+      if (message.role !== 'user') continue;
+      // Skip clarification answers: the user message right before a
+      // clarification answer's bot reply is the question to replay.
+      const previousBot = messages
+        .slice(0, i)
+        .reverse()
+        .find((m) => m.role === 'bot');
+      if (previousBot && previousBot.role === 'bot' && previousBot.clarification) continue;
+      return message.sent;
+    }
+    return null;
   }
+}
+
+/** The backend answers errors in the OData shape `{error: {message}}` service-wide. */
+function describe(error: unknown): string {
+  const body = (error as { error?: { error?: { message?: string } } } | null)?.error;
+  return body?.error?.message ?? 'Anfrage fehlgeschlagen. Bitte versuch es noch einmal.';
 }
