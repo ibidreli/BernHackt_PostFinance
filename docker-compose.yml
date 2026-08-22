@@ -1,0 +1,24 @@
+services:
+  api:
+    build:
+      context: ./apps/api
+    ports:
+      - "8000:8000"
+    environment:
+      CSV_PATH: /data/data_personal.csv
+    volumes:
+      # Bind-mounted (not baked into the image) so the CSV can be swapped
+      # for the real dataset without rebuilding the container.
+      - ./data:/data:ro
+      # Live-reload for local development.
+      - ./apps/api/app:/app/app
+    command:
+      [
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--reload",
+      ]
