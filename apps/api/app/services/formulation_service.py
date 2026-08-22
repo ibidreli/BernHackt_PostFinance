@@ -87,15 +87,37 @@ def _months_phrase(n: float | None) -> str | None:
     return "einem Monat" if n_int == 1 else f"{n_int} Monaten"
 
 
-def _impact_phrase(amount: float, round_100: bool) -> str:
+def _impact_phrase(f: AssistantFacts, round_100: bool) -> str:
     """Sign-aware wording for a what_if impact - found via live testing
     (T9): a negative impact (a change that costs money, e.g. a new
     recurring expense) rendered as "die Bilanz verbessert sich um CHF
     -50", which is both grammatically odd and misleading (reads like an
     improvement). "verbessert"/"verschlechtert" + the absolute amount
-    reads correctly either way."""
-    verb = "verbessert" if amount >= 0 else "verschlechtert"
-    return f"Das {verb} deine Bilanz über den Zeitraum um {_chf(abs(amount), round_100)}."
+    reads correctly either way.
+
+    Falls back to the monthly-equivalent rate (`impact_monthly_chf`) when
+    the cumulative total (`impact_cumulative_chf`) is exactly 0 - found
+    live: "Netflix kündigen" asked at `present` with `as_of` a few days
+    before the next payday returned "verbessert deine Bilanz über den
+    Zeitraum um CHF 0" verbatim, even though cancelling Netflix is a real
+    CHF 29.90/month saving. `present` reuses Feature #4's `next_salary`
+    horizon (see `answer_service.answer_what_if`), which can be as short
+    as 1-2 days - a monthly subscription's exact billing date only rarely
+    falls inside that narrow window, so `impact_cumulative_chf` (the
+    literal balance difference at that window's end) is legitimately 0
+    almost every time this is asked shortly after payday, independent of
+    whether the subscription is real. `impact_monthly_chf` is the
+    window-independent, always-correct rate for recurring adjustments and
+    stays 0 for genuinely non-recurring ones (`one_off`, see
+    `forecast_service._monthly_equivalent_impact`), so this fallback never
+    fires for those - the cumulative total remains the right (and only
+    meaningful) number there."""
+    cumulative = f.impact_cumulative_chf or 0.0
+    if cumulative == 0.0 and f.impact_monthly_chf:
+        verb = "spart" if f.impact_monthly_chf >= 0 else "kostet"
+        return f"Das {verb} dir {_chf(abs(f.impact_monthly_chf), False)} pro Monat."
+    verb = "verbessert" if cumulative >= 0 else "verschlechtert"
+    return f"Das {verb} deine Bilanz über den Zeitraum um {_chf(abs(cumulative), round_100)}."
 
 
 def template_answer(input_data: FormulationInput) -> str:
@@ -127,7 +149,7 @@ def template_answer(input_data: FormulationInput) -> str:
 
     if input_data.status == "yes":
         if input_data.intent == "what_if" and f.impact_cumulative_chf is not None:
-            sentences.append(_impact_phrase(f.impact_cumulative_chf, round_100))
+            sentences.append(_impact_phrase(f, round_100))
         elif f.projected_chf is not None:
             sentences.append(f"Das ist gut möglich - du hast voraussichtlich {chf(f.projected_chf)} zur Verfügung.")
         if f.buffer_after_months is not None:
@@ -135,7 +157,7 @@ def template_answer(input_data: FormulationInput) -> str:
 
     elif input_data.status == "tight":
         if input_data.intent == "what_if" and f.impact_cumulative_chf is not None:
-            sentences.append("Das reicht knapp. " + _impact_phrase(f.impact_cumulative_chf, round_100))
+            sentences.append("Das reicht knapp. " + _impact_phrase(f, round_100))
         elif f.projected_chf is not None:
             sentences.append(f"Das reicht knapp - du hast voraussichtlich {chf(f.projected_chf)} zur Verfügung.")
         if f.buffer_after_months is not None:
