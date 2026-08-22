@@ -105,7 +105,21 @@ Lebendes Dokument: pro Teilschritt (T0–T11) ein Satz Stand, plus **Bugs** (gef
 
 ## T5/T6 — Repositories (`transaction_repository.py`, `balance_repository.py`)
 
-**Stand:** Teilweise — `transaction_repository.py` existiert bereits aus T1 (Normalisierung), Median-/Perzentil-Methoden und `balance_repository.py` fehlen noch.
+**Stand:** Fertig — `monthly_category_stats` (T5) und `BalanceRepository` (T6, neu) implementiert und gegen den echten Datensatz verifiziert.
+
+**Bugs:**
+- **Gefunden & gefixt:** Die ursprüngliche T1-Sortierung (`sort by date`) behielt bei mehreren Buchungen desselben Tages stillschweigend die Datei-Reihenfolge (newest-first) statt sie umzudrehen — dadurch landeten z. B. zwei Buchungen vom 25.08.2022 in der falschen Reihenfolge. Fix: Liste vor dem stabilen Sort umkehren, damit gleiche Tage in chronologischer Reihenfolge landen.
+- **Untersucht, nicht gefixt (siehe Grenzen):** `Valuta` (Wertstellung) kann vor `Datum` (Buchungsdatum) liegen — als Sekundär-Sortierschlüssel deshalb nicht zuverlässig für die exakte Sub-Tages-Reihenfolge.
+- **Pauschales Duplikat-Entfernen ausprobiert und wieder verworfen:** 32 Gruppen exakt identischer Zeilen in der CSV. Für manche (z. B. eine 3-fach gelistete SBB-Zahlung) ist Löschen korrekt, für mindestens eine (zwei identische "OXYMORON BAAR"-Buchungen) beweist die Saldo-Rekonstruktion aber, dass beide real sind. Keine Spalte unterscheidet die Fälle → Dedup verworfen, nicht umgesetzt.
+
+**Grenzen:**
+- Sub-Tages-Reihenfolge mehrerer Buchungen am selben Tag ist aus den Quelldaten **nicht zuverlässig rekonstruierbar** (weder `Datum`+Dateireihenfolge noch `Valuta` sind durchgehend korrekt) — betrifft aber nicht den eingehaltenen Vertrag: `Balance.as_of()` nimmt einen `date`-Parameter (keine Uhrzeit) und ist auf **Tages-Granularität verifiziert exakt** (1312 von 1312 Kalendertagen mit echtem Saldo-Checkpoint, 0 Abweichungen).
+- `monthly_category_stats`: Kategorie-Median wird einmalig über alle verfügbaren Monate berechnet, keine gewichtete Berücksichtigung von "wie weit zurück" ein Monat liegt.
+- Kein Caching - `monthly_category_stats` wird bei jedem Aufruf neu berechnet (für 5303 Transaktionen unkritisch, aber bei jedem Forecast-Request eine neue Aggregation).
+
+**Erweiterungen:**
+- Falls Sub-Tages-Genauigkeit später doch gebraucht wird (z. B. Intraday-Chart): würde eine echte Buchungssequenznummer in den Rohdaten brauchen, die aktuell nicht existiert.
+- Gewichtete/exponentiell abklingende Monats-Gewichtung für `monthly_category_stats`, falls "neuere Monate zählen mehr" gewünscht ist.
 
 ---
 

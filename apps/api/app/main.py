@@ -14,7 +14,8 @@ from fastapi import FastAPI, Request
 
 from app.core.config import CSV_PATH
 from app.data.data_personal import load_raw_transactions
-from app.repositories.transaction_repository import TransactionRepository
+from app.repositories.balance_repository import BalanceRepository
+from app.repositories.transaction_repository import TransactionRepository, monthly_category_stats
 from app.services.classification import classify_transactions
 from app.services.recurring_detection import detect_recurring_payments, detect_salary_day
 
@@ -29,6 +30,7 @@ async def lifespan(app: FastAPI):
     app.state.raw_transactions = raw
     repo = TransactionRepository.from_raw(raw)
     app.state.transaction_repository = repo
+    app.state.balance_repository = BalanceRepository(repo.all())
     recurring_payments = detect_recurring_payments(repo.all())
     app.state.recurring_payments = recurring_payments
     app.state.classifications = classify_transactions(repo.all(), recurring_payments)
@@ -56,6 +58,11 @@ def health(request: Request) -> dict:
     transactions = repo.all()
     flow_counts = Counter(t.flow for t in transactions)
 
+    classifications = request.app.state.classifications
+    variable_txs = [c.transaction for c in classifications if c.topf == "variable"]
+    latest_balance = request.app.state.balance_repository.latest()
+    category_stats = monthly_category_stats(variable_txs, as_of=latest_balance.as_of) if latest_balance else []
+
     return {
         "status": "ok",
         "csv_path": str(CSV_PATH),
@@ -79,7 +86,7 @@ def health(request: Request) -> dict:
             Counter(rp.interval for rp in request.app.state.recurring_payments)
         ),
         "salary_day": detect_salary_day(request.app.state.recurring_payments),
-        "topf_counts": dict(
-            Counter(c.topf for c in request.app.state.classifications)
-        ),
+        "topf_counts": dict(Counter(c.topf for c in classifications)),
+        "latest_balance": latest_balance.model_dump(mode="json") if latest_balance else None,
+        "category_stats_computed": len(category_stats),
     }

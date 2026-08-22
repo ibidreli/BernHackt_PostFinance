@@ -31,11 +31,17 @@ Geldtransfers" (314 rows), "Überträge" (14 rows). "Rückerstattungen" (23
 rows) are refunds, not transfers - per the issue those need separate
 handling ("nicht als Einnahme prognostizieren") in the Topf-3
 classification step, not here.
+
+Also holds `monthly_category_stats` (T5): P25/Median/P75 of monthly
+category totals, the statistical basis for the Topf-2 band.
 """
 
 from __future__ import annotations
 
 import re
+from collections import defaultdict
+from datetime import date
+from typing import NamedTuple
 
 import pandas as pd
 
@@ -168,6 +174,19 @@ def normalize_transactions(raw: pd.DataFrame) -> list[Transaction]:
             )
         )
 
+    # The export lists newest-first, including same-day bookings (verified:
+    # for two same-day GELD SENDEN bookings, the *earlier* one is the one
+    # further down in the file). Reversing first makes the stable sort
+    # below resolve same-day ties oldest-first instead of newest-first.
+    # Sort key is (date, value_date) for a best-effort sub-day order -
+    # value_date is not fully reliable for this (it can predate `date` for
+    # card transactions, confirmed against real rows), so the *exact*
+    # order of same-day transactions relative to each other isn't always
+    # right. Doesn't matter in practice: nothing downstream needs sub-day
+    # precision (T3/T4/T5 work at day/month granularity, and
+    # `balance_repository.py`'s day-level reconstruction is verified
+    # exact regardless - see its module docstring).
+    transactions.reverse()
     transactions.sort(key=lambda t: (t.date, t.value_date))
     return transactions
 
@@ -179,9 +198,7 @@ class TransactionRepository:
     """In-memory read access over normalized transactions.
 
     No DB: built once from the CSV export at app startup (see
-    `app/main.py`) and held in `app.state`. Statistical query methods
-    (median/percentile per category, needed for the Topf-2 band) land
-    here in a later step.
+    `app/main.py`) and held in `app.state`.
     """
 
     def __init__(self, transactions: list[Transaction]):
@@ -199,3 +216,113 @@ class TransactionRepository:
 
     def incomes(self) -> list[Transaction]:
         return [t for t in self._transactions if t.flow == "income" and not t.is_transfer]
+
+
+# --- median/percentile per category (T5) --------------------------------
+
+CategoryKey = tuple[str | None, str | None]  # (category_main, category_sub)
+
+
+class CategoryStats(NamedTuple):
+    """P25/Median/P75 of a category's *monthly totals* over the last N
+    full calendar months - the basis for the Topf-2 band (see
+    `app/services/forecast_service.py`, T7)."""
+
+    category_main: str | None
+    category_sub: str | None
+    p25_chf: float
+    median_chf: float
+    p75_chf: float
+    months_used: int
+    """How many full calendar months actually went into the calculation
+    (<= the requested `months`) - drives the "weniger als 6 Monate
+    Historie" note in `assumptions` (T7/T8): under 3, the caller should
+    disable the band entirely per the issue's edge-case table."""
+
+
+def _percentile(sorted_values: list[float], p: float) -> float:
+    """Linear interpolation between ranks (numpy's default method) -
+    deliberately simple rather than pulling in a stats library for this."""
+    if not sorted_values:
+        return 0.0
+    if len(sorted_values) == 1:
+        return sorted_values[0]
+    idx = p * (len(sorted_values) - 1)
+    lower = int(idx)
+    upper = min(lower + 1, len(sorted_values) - 1)
+    frac = idx - lower
+    return sorted_values[lower] + (sorted_values[upper] - sorted_values[lower]) * frac
+
+
+def _last_full_months(
+    as_of: date, max_months: int, earliest: date
+) -> list[tuple[int, int]]:
+    """Up to `max_months` full calendar months strictly before `as_of`'s
+    month, oldest first. The *current* (possibly partial) month is
+    deliberately excluded - otherwise an in-progress month would drag the
+    median down just for not being over yet. Stops early if `earliest`
+    (the first date with any data) doesn't go back far enough, instead of
+    inventing history that isn't there.
+    """
+    keys: list[tuple[int, int]] = []
+    year, month = as_of.year, as_of.month
+    earliest_key = (earliest.year, earliest.month)
+    for _ in range(max_months):
+        month -= 1
+        if month == 0:
+            month, year = 12, year - 1
+        if (year, month) < earliest_key:
+            break
+        keys.append((year, month))
+    keys.reverse()
+    return keys
+
+
+def monthly_category_stats(
+    transactions: list[Transaction],
+    as_of: date,
+    months: int = 6,
+) -> list[CategoryStats]:
+    """P25/Median/P75 of monthly category totals over the last `months`
+    full calendar months before `as_of`.
+
+    Expects already-filtered transactions - typically the Topf-2
+    ("variable") subset from `app/services/classification.py` (T4), not
+    the full transaction list. This function itself is topf-agnostic: it
+    just aggregates whatever it's given.
+
+    A category with no booking in a given month still contributes a CHF 0
+    data point for that month - otherwise a category only used in 2 of 6
+    months would look artificially expensive instead of "used rarely".
+    """
+    if not transactions:
+        return []
+
+    earliest = min(t.date for t in transactions)
+    month_keys = _last_full_months(as_of, months, earliest)
+    if not month_keys:
+        return []
+    month_key_set = set(month_keys)
+
+    totals: dict[CategoryKey, dict[tuple[int, int], float]] = defaultdict(dict)
+    for t in transactions:
+        month_key = (t.date.year, t.date.month)
+        if month_key not in month_key_set:
+            continue
+        by_month = totals[(t.category_main, t.category_sub)]
+        by_month[month_key] = by_month.get(month_key, 0.0) + abs(t.amount_chf)
+
+    stats: list[CategoryStats] = []
+    for (category_main, category_sub), by_month in totals.items():
+        values = sorted(by_month.get(mk, 0.0) for mk in month_keys)
+        stats.append(
+            CategoryStats(
+                category_main=category_main,
+                category_sub=category_sub,
+                p25_chf=round(_percentile(values, 0.25), 2),
+                median_chf=round(_percentile(values, 0.5), 2),
+                p75_chf=round(_percentile(values, 0.75), 2),
+                months_used=len(month_keys),
+            )
+        )
+    return stats

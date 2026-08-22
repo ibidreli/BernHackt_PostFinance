@@ -41,6 +41,18 @@ def load_raw_transactions(path: Path = CSV_PATH) -> pd.DataFrame:
     Rows are returned in file order. The export is observed to list the
     newest booking first - callers that need chronological order should
     sort by `date` explicitly rather than relying on this.
+
+    NOT deduplicated: the raw export has 32 groups of byte-identical rows
+    (same date, text, amount, category, empty balance). Tried dropping
+    them and verified against the running-balance reconstruction (see
+    `app/repositories/balance_repository.py`) - for some groups (e.g. a
+    triple-listed SBB payment) dropping the extras fixes the balance
+    math, but for at least one (two identical "OXYMORON BAAR" TWINT
+    purchases on 2023-01-01) the balance math proves *both* are real,
+    independent purchases. No column distinguishes the two cases, so
+    blanket deduplication is unsafe and was reverted - see
+    `app/repositories/balance_repository.py` module docstring for the
+    resulting known limitation.
     """
     df = pd.read_csv(path, sep=CSV_DELIMITER, encoding=CSV_ENCODING, dtype=str)
     df = df.rename(columns=_COLUMN_MAP)
