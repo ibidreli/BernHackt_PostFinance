@@ -42,7 +42,7 @@ Pro Request rechnen [[Forecast-Service]] / [[Subscription-Service]] auf diesen v
 ## Frontend (apps/web)
 
 - **Angular 22** (Standalone Components, Signals, `input()`/`output()`, native Control Flow `@if/@for`, `@Service`-Decorator), **Tailwind CSS 4** + **daisyUI 5**, `@lucide/angular` für Icons, TypeScript ~6.0. Konventionen: [[App-Shell & Navigation]].
-- Auf `main` existiert nur die Shell (Layout, Sidebar, Theme, Dashboard-Platzhalter); die Feature-Seiten [[Forecast-Seite]] und [[Assistant-Seite]] liegen auf `origin/feature/prognosis`, wo auch `proxy.conf.json` `/api` und `/odata` auf `localhost:8000` proxyt.
+- Auf `main` existiert nur die Shell (Layout, Sidebar, Theme, Dashboard-Platzhalter); die Feature-Seiten [[Forecast-Seite]] und [[Assistant-Seite]] liegen auf `origin/feature/prognosis`, wo auch `proxy.conf.json` `/api` und `/odata` auf `localhost:8000` proxyt (Backend-Pfad `/odata` ist auf `origin/5-feature-future-me-chatbot-szenario-assistent` inzwischen zu `/api/v1` umbenannt, siehe [[OData-Layer]] — beim Merge nachzuziehen).
 
 ## AI-Tooling
 

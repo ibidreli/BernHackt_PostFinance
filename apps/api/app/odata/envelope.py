@@ -19,7 +19,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 
-SERVICE_ROOT = "/odata"
+SERVICE_ROOT = "/api/v1"
 
 
 def odata_collection(context_suffix: str, value: list[Any], count: int | None = None) -> dict:
@@ -41,7 +41,7 @@ def odata_single(context_suffix: str, value: dict) -> dict:
 
 class ODataVersionMiddleware(BaseHTTPMiddleware):
     """Stamps every response with `OData-Version: 4.0`. Applied
-    service-wide rather than only under /odata for simplicity - harmless
+    service-wide rather than only under /api/v1 for simplicity - harmless
     on non-OData endpoints like /health, and the spec only says OData
     responses must carry it, not that others mustn't."""
 

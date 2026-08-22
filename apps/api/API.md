@@ -8,24 +8,24 @@ Diese Datei ist die kompakte Referenz für die drei Endpunkte. Für Details zu B
 - **OData v4, pragmatisches Subset.** `OData-Version: 4.0`-Header auf jeder Antwort, `@odata.context`-Envelope, OData-JSON-Error-Format (`{"error": {"code", "message"}}`). Kein `$batch`, keine Atom/XML-Repräsentation. Details: [STATUS.md, T9](STATUS.md#t9--odata-layer).
 - **Kein Zins, keine Rendite.** `assumptions.interest_applied` ist immer `false`. Die Hochrechnung ist reine Summierung.
 - **Interaktiv testen:** `/docs` (Swagger UI) nach `docker compose up` — siehe [README.md](../../README.md) für Run-Anleitung.
-- **CSDL-Dokument:** `GET /odata/$metadata`.
+- **CSDL-Dokument:** `GET /api/v1/$metadata`.
 
 ## Die drei Endpunkte
 
 | Endpunkt | HTTP | OData-Konzept | Zweck |
 |---|---|---|---|
-| `/odata/RecurringPayments` | GET | EntitySet | Liste erkannter wiederkehrender Zahlungen, mit vollen Query-Optionen |
-| `/odata/GetForecast` | GET | Function | Basisprognose ohne Szenario |
-| `/odata/Simulate` | POST | Action | Prognose mit Eingriffen, Baseline + Szenario in einer Antwort |
+| `/api/v1/RecurringPayments` | GET | EntitySet | Liste erkannter wiederkehrender Zahlungen, mit vollen Query-Optionen |
+| `/api/v1/GetForecast` | GET | Function | Basisprognose ohne Szenario |
+| `/api/v1/Simulate` | POST | Action | Prognose mit Eingriffen, Baseline + Szenario in einer Antwort |
 
 ---
 
-### `GET /odata/RecurringPayments`
+### `GET /api/v1/RecurringPayments`
 
 Query-Optionen: `$filter`, `$select`, `$orderby`, `$top`, `$skip`, `$count`.
 
 ```bash
-curl "http://localhost:8000/odata/RecurringPayments?\$filter=is_active%20eq%20true&\$orderby=amount_chf%20desc&\$top=5&\$count=true"
+curl "http://localhost:8000/api/v1/RecurringPayments?\$filter=is_active%20eq%20true&\$orderby=amount_chf%20desc&\$top=5&\$count=true"
 ```
 
 **`$filter`-Grammatik** (handgeschrieben, kein vollständiges OData-ABNF — siehe `app/odata/query.py`):
@@ -42,7 +42,7 @@ curl "http://localhost:8000/odata/RecurringPayments?\$filter=is_active%20eq%20tr
 
 ---
 
-### `GET /odata/GetForecast`
+### `GET /api/v1/GetForecast`
 
 | Parameter | Typ | Default |
 |---|---|---|
@@ -50,7 +50,7 @@ curl "http://localhost:8000/odata/RecurringPayments?\$filter=is_active%20eq%20tr
 | `as_of` | Datum | heute |
 
 ```bash
-curl "http://localhost:8000/odata/GetForecast?horizon=90d&as_of=2026-08-22"
+curl "http://localhost:8000/api/v1/GetForecast?horizon=90d&as_of=2026-08-22"
 ```
 
 Antwort folgt exakt dem Issue-Contract (`as_of`, `horizon_end`, `opening_balance_chf`, `next_salary`, `free_to_spend`, `tight_date`, `known_payments`, `series`, `assumptions`) plus `@odata.context`. Volles Schema in Swagger (`ForecastEnvelope`).
@@ -61,10 +61,10 @@ Antwort folgt exakt dem Issue-Contract (`as_of`, `horizon_end`, `opening_balance
 
 ---
 
-### `POST /odata/Simulate`
+### `POST /api/v1/Simulate`
 
 ```bash
-curl -X POST "http://localhost:8000/odata/Simulate" \
+curl -X POST "http://localhost:8000/api/v1/Simulate" \
   -H "Content-Type: application/json" \
   -d '{
     "horizon": "365d",

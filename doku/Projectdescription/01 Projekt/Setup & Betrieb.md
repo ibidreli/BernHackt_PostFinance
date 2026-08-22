@@ -30,7 +30,7 @@ npm install
 npm start        # http://localhost:4200
 ```
 
-Node 24 (`.nvmrc`). Auf dem Branch `feature/prognosis` proxyt `proxy.conf.json` die Pfade `/api` und `/odata` auf `localhost:8000` — API muss dafür laufen.
+Node 24 (`.nvmrc`). Auf dem Branch `feature/prognosis` proxyt `proxy.conf.json` die Pfade `/api` und `/odata` auf `localhost:8000` — API muss dafür laufen. **Achtung, noch nicht nachgezogen:** Backend-seitig wurde `/odata` auf `origin/5-feature-future-me-chatbot-szenario-assistent` zu `/api/v1` umbenannt ([[OData-Layer]]); `proxy.conf.json` auf `feature/prognosis` muss beim Merge entsprechend angepasst werden (der separate `/odata`-Eintrag entfällt dann, da alles unter `/api` läuft).
 
 ## Chatbot-Konfiguration (Branch `origin/5-…`)
 

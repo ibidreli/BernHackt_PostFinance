@@ -4,16 +4,18 @@ tags: [backend, api]
 
 # API-Referenz
 
-Vollreferenz: `apps/api/API.md` · interaktiv: Swagger unter `http://localhost:8000/docs` · CSDL: `GET /odata/$metadata` · Technik dahinter: [[OData-Layer]]
+Vollreferenz: `apps/api/API.md` · interaktiv: Swagger unter `http://localhost:8000/docs` · CSDL: `GET /api/v1/$metadata` · Technik dahinter: [[OData-Layer]]
+
+Mount-Pfad `/api/v1` (vormals `/odata`) — reine Pfad-Umbenennung, konsistent mit dem [[Future-Me Chatbot]]s `/api/v1/assistant/...`; die OData-Semantik (Envelope, Header, `$metadata`, Fehlerformat) bleibt unverändert.
 
 ## Endpunkte
 
 | Endpunkt                   | HTTP | OData-Konzept | Zweck                                                                      | Code                              |
 | -------------------------- | ---- | ------------- | -------------------------------------------------------------------------- | --------------------------------- |
-| `/odata/RecurringPayments` | GET  | EntitySet     | Erkannte wiederkehrende Zahlungen, volle Query-Optionen                    | `app/api/routes/forecast.py`      |
-| `/odata/GetForecast`       | GET  | Function      | Basisprognose (`horizon`, `as_of`)                                         | `app/api/routes/forecast.py`      |
-| `/odata/Simulate`          | POST | Action        | Prognose mit Eingriffen: Baseline + Szenario + Diff in einer Antwort       | `app/api/routes/forecast.py`      |
-| `/odata/GetSubscriptions`  | GET  | Function      | Komplette [[Abo-Radar]]-Payload in einem Request *(uncommitted)*           | `app/api/routes/subscriptions.py` |
+| `/api/v1/RecurringPayments` | GET  | EntitySet     | Erkannte wiederkehrende Zahlungen, volle Query-Optionen                    | `app/api/routes/forecast.py`      |
+| `/api/v1/GetForecast`       | GET  | Function      | Basisprognose (`horizon`, `as_of`)                                         | `app/api/routes/forecast.py`      |
+| `/api/v1/Simulate`          | POST | Action        | Prognose mit Eingriffen: Baseline + Szenario + Diff in einer Antwort       | `app/api/routes/forecast.py`      |
+| `/api/v1/GetSubscriptions`  | GET  | Function      | Komplette [[Abo-Radar]]-Payload in einem Request *(uncommitted)*           | `app/api/routes/subscriptions.py` |
 | `/health`                  | GET  | —             | Ausführlicher Smoke-Test (Zeilenzahlen, Lohntag, Töpfe, Beispiel-Prognose) | `app/main.py`                     |
 
 ## `RecurringPayments` — Querying
@@ -21,7 +23,7 @@ Vollreferenz: `apps/api/API.md` · interaktiv: Swagger unter `http://localhost:8
 `$filter`, `$select`, `$orderby`, `$top`, `$skip`, `$count`. `$filter`-Grammatik (handgeschrieben, [[OData-Layer]]): `eq ne gt ge lt le`, `and/or/not`, Klammern, String/Zahl/Bool/Null-Literale — kein `contains`/`startswith`.
 
 ```bash
-curl "http://localhost:8000/odata/RecurringPayments?\$filter=is_active%20eq%20true&\$orderby=amount_chf%20desc&\$top=5&\$count=true"
+curl "http://localhost:8000/api/v1/RecurringPayments?\$filter=is_active%20eq%20true&\$orderby=amount_chf%20desc&\$top=5&\$count=true"
 ```
 
 Zwei Besonderheiten:

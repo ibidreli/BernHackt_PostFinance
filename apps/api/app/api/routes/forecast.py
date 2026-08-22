@@ -2,10 +2,10 @@
 the issue's API contract, mapped onto OData concepts per the earlier
 architecture decision:
 
-    GET  /odata/RecurringPayments  - EntitySet, full $filter/$select/
-                                      $orderby/$top/$skip/$count
-    GET  /odata/GetForecast        - Function (read-only, no side effects)
-    POST /odata/Simulate           - Action (side-effect-capable, complex body)
+    GET  /api/v1/RecurringPayments  - EntitySet, full $filter/$select/
+                                       $orderby/$top/$skip/$count
+    GET  /api/v1/GetForecast        - Function (read-only, no side effects)
+    POST /api/v1/Simulate           - Action (side-effect-capable, complex body)
 
 Deviates from strict OData URL syntax for GetForecast: the spec calls for
 parenthetical parameters in the path (`GetForecast(horizon='30d')`), this
