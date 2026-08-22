@@ -43,7 +43,7 @@ Beyond the list
 
 ### Was ist aus technsicher Sicht besonders cool an unserer Lösung
 
-- TODO
+- D3 (Data Driven Documents): Aus den Daten ein Node Network erstellen und mit dem Visualisierungsframewok D3 visualisieren
 
 ## Abgrenzung/ Offene Punkte
 
