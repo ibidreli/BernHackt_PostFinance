@@ -31,7 +31,7 @@ Beyond the list
 **Backend**
 
 - Python
-- TODO
+- Fastapi
 
 ## Implementation
 
@@ -43,14 +43,15 @@ Beyond the list
 
 ### Was ist aus technsicher Sicht besonders cool an unserer Lösung
 
+- Futer-me Chat mit Diagramm
 - D3 (Data Driven Documents): Aus den Daten ein Node Network erstellen und mit dem Visualisierungsframewok D3 visualisieren
 
 ## Abgrenzung/ Offene Punkte
 
 ### Welche Abgrenzungen haben wir bewusst vorgenommen und damit nict implementiert?
 
-- TODO
+- Abo-Radar
 
 #### Weshalb?
 
-- TODO
+- Zu wenig speziell gibt es bereits und hat nicht so einen grossen Mehrwert
