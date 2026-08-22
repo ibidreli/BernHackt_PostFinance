@@ -21,6 +21,7 @@ from statistics import median
 
 from app.models.recurring_payment import AmountHistoryEntry, Interval, RecurringPayment
 from app.models.transaction import Transaction
+from app.services.merchant_normalization import canonical_merchant_key
 
 # Representative day-length per interval, used for `is_active`.
 _INTERVAL_DAYS = {"monthly": 30, "quarterly": 91, "yearly": 365}
@@ -68,31 +69,11 @@ _INTERVAL_GAP_TOLERANCE: dict[Interval, tuple[int, int]] = {
 }
 
 
-def _canonical_merchant_key(merchant: str) -> str:
-    """First whitespace token of the extracted merchant name.
-
-    Deliberately simple (no fuzzy matching) - it happens to be exactly
-    enough to unify billing-entity variants such as Netflix appearing as
-    "NETFLIX.COM LOS GATOS" / "NETFLIX.COM AMSTERDAM" /
-    "NETFLIX.COM 866-579-7172" (shared first token "NETFLIX.COM"), while
-    still being distinctive for most merchants. Combined with
-    category_main as part of the group key (`group_key`) to reduce
-    false merges from short/generic first tokens (e.g. "M", "BP", "TCS").
-
-    Known limitation: two genuinely different merchants that share both
-    a first token and a category still get merged into one recurring
-    payment. Accepted for a hackathon timeline - fixing it properly would
-    need amount-similarity clustering, which is exactly the complexity
-    "keep it simple" says to avoid here.
-    """
-    return merchant.split(" ", 1)[0] if merchant else merchant
-
-
 def group_key(t: Transaction) -> tuple[str, str | None, str]:
     """Public so T4 (`app/services/classification.py`) can map a
     transaction back to the RecurringPayment it belongs to, using the
     exact same grouping logic used to detect it here."""
-    return (_canonical_merchant_key(t.merchant), t.category_main, t.flow)
+    return (canonical_merchant_key(t.merchant), t.category_main, t.flow)
 
 
 def recurring_payment_id(rp: RecurringPayment) -> str:

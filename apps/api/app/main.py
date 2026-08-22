@@ -15,6 +15,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes.assistant import router as assistant_router
 from app.api.routes.forecast import router as forecast_router
+from app.api.routes.graph_odata import router as graph_odata_router
+from app.api.routes.graph import router as graph_router
 from app.core.config import CSV_PATH
 from app.data.data_personal import load_raw_transactions
 from app.odata.envelope import ODataVersionMiddleware, install_odata_error_handlers
@@ -42,20 +44,18 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Forecast Service API",
     description=(
-        "Zukunftsprognose & Szenario-Simulation plus die Assistenz-Ressourcen. "
-        "Read-only OData service over an in-memory snapshot of the account export - "
-        "no database, and one protocol for everything: Prognose (`GetForecast`, "
-        "`Simulate`, `RecurringPayments`) und Assistenz (`Ask`, `Suggestions`) "
-        "rechnen beide über dieselbe `forecast_service`-Funktion. "
-        "See /odata/$metadata for the CSDL, /docs for interactive Swagger UI."
+        "Zukunftsprognose & Szenario-Simulation. Read-only OData service "
+        "over an in-memory snapshot of the account export - no database. "
+        "See /api/v1/$metadata for the CSDL, /docs for interactive Swagger UI."
     ),
     version="0.1.0",
     lifespan=lifespan,
 )
 app.add_middleware(ODataVersionMiddleware)
 install_odata_error_handlers(app)
-app.include_router(forecast_router, prefix="/odata")
-app.include_router(assistant_router, prefix="/odata")
+app.include_router(graph_odata_router, prefix="/api/v1")
+app.include_router(graph_router, prefix="/api/v1")
+app.include_router(forecast_router, prefix="/api/v1")
 
 # Read-only service over a local CSV, no auth and no cookies - the
 # Angular dev server (a different origin) needs to reach it directly
@@ -65,10 +65,9 @@ app.add_middleware(
 )
 
 
-@app.get("/odata/$metadata", tags=["odata"], include_in_schema=False)
+@app.get("/api/v1/$metadata", tags=["odata"], include_in_schema=False)
 def odata_metadata() -> Response:
-    """CSDL service document (T9). The three actual resources
-    (RecurringPayments/GetForecast/Simulate) are wired in T10."""
+    """CSDL service document for all exposed OData resources."""
     return Response(content=METADATA_XML, media_type="application/xml")
 
 
