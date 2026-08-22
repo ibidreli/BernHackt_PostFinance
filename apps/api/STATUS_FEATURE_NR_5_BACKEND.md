@@ -87,3 +87,31 @@ Weitere Annahmen siehe T0–T13 unten, jeweils im Kontext.
 **Erweiterungen:**
 - `LONG_HORIZON_MONTHS` ist ein einfaches `dict[str, int]`, kein `Literal`-gebundener Typ — T5/T7 müssen selbst sicherstellen, dass nur gültige `AssistantHorizon`-Werte reinkommen (Pydantic übernimmt das schon auf Request-Ebene, T1).
 - Aktuell wird die variable Basis (Median/P25/P75) einmalig bei `as_of` berechnet und dann über den ganzen Horizont hochskaliert — eine Erweiterung wäre, saisonale Muster (z. B. höhere Ausgaben im Dezember) zu modellieren, was mit nur 6-12 Monaten Historie aber nicht seriös möglich ist.
+
+---
+
+## T3 — services/intent_service.py (LLM-Extraktion + Validierung)
+
+**Stand:** Fertig — live gegen die echte OpenAI-API getestet (8 reale Fragen über alle drei Fragetypen + unsupported + category-percent-Fall + 2 Rückfrage-Trigger), plus 2 Fehlerpfade (Timeout, ungültiger Key) und die deterministische Clarification-Answer-Logik ohne LLM-Call.
+
+**Bugs:** Ein Bug beim Schreiben selbst gefunden und vor dem Testen korrigiert: in `apply_clarification_answer` blieb ein totes Code-Fragment (`answer_text if False else None`) aus einer Zwischenversion stehen — hätte `default_used` fälschlich immer auf `None` gesetzt, egal ob ein Default angewendet wurde. Beim Nochmal-Lesen vor dem Testen aufgefallen, bereinigt, danach live verifiziert (Test bestätigt: Freitext-Antwort ohne Button-Match → `default_used="Bar"`).
+
+**Design-Entscheidungen:**
+- **Drei Dinge in einer Datei** (Schema, LLM-Call, Validierungs-Leiter) statt aufgeteilt — sie gehören eng zusammen (`ExtractedIntent` wird von allen dreien verwendet) und die Datei bleibt trotzdem überschaubar.
+- **`beta.chat.completions.parse()` mit Pydantic-Modell als `response_format`** (Structured Outputs, live gegen `gpt-4o-mini` verifiziert) statt manuellem JSON-Parsing — die SDK übernimmt Schema-Generierung und Validierung.
+- **Timeout wandelt sich in eine explizite Exception** (`AssistantLLMTimeoutError`), keine stille Ersatzformulierung — deine Korrektur von eben, live mit einem künstlichen 0.01s-Timeout verifiziert.
+- **Rückfrage-Texte/Optionen kommen aus einer festen Tabelle** (`_FIXED_CLARIFICATIONS`), nicht vom Modell — erfüllt die Issue-Vorgabe wörtlich ("fest definiert, nicht vom Modell erfunden").
+- **Clarification-Antworten brauchen keinen LLM-Call.** Buttons liefern immer eine von wenigen bekannten Zeichenketten — `apply_clarification_answer` matched deterministisch und wendet bei Nichterkennung (Freitext statt Klick) einen dokumentierten Default an, inkl. der von der Issue geforderten Rückmeldung ("...ich habe Bar angenommen").
+- **Priorität der Validierungs-Leiter** (Reihenfolge fest im Code): fehlender Betrag zuerst (ohne den ist nichts berechenbar), dann fehlender Zeitraum bei `present` (eine "kann ich mir X leisten"-Frage ohne Horizont ergibt bei `present` keinen Sinn), dann Zahlungsart bei grossen Beträgen, dann what_if-Spezifika — so löst nie mehr als eine Rückfrage gleichzeitig aus.
+- **`merchant_hint` fehlt bei cancel/adjust → `unsupported`, keine 5. Rückfrage.** Bewusst nicht selbständig um einen neuen Trigger erweitert, der nicht im vom Team abgesegneten 3er-Set steht.
+
+**Echter Fund, an T7 weiterzugeben:** Bei der Frage *"Was wäre, wenn ich monatlich 50 mehr für Möbel ausgebe?"* hat das Modell trotz Prompt-Hinweis ("bestehende wiederkehrende Zahlung") `adjustment_kind="adjust"` mit `merchant_hint="Möbel"` extrahiert, obwohl "Möbel" mit ziemlicher Sicherheit keine bestehende RecurringPayment in den echten Daten ist — sprachlich ist die Frage tatsächlich mehrdeutig (auch für einen Menschen). `validate_extraction` prüft nur, dass *irgendein* `merchant_hint` da ist, nicht ob er zu echten Daten passt (kann sie nicht sehen, bewusste Entkopplung). **T7 muss** beim Abgleich von `merchant_hint` gegen echte `RecurringPayment`-Namen den Fall "kein Treffer trotz cancel/adjust" abfangen (z. B. Fallback auf `unsupported` statt Absturz) — hier vorgemerkt, damit es beim Bau von T7 nicht vergessen geht.
+
+**Grenzen:**
+- Kein Retry bei transienten OpenAI-Fehlern (z. B. einzelner 500er) — ein Fehlschlag ist sofort ein Fehlschlag. Für eine Live-Demo mit wenigen Anfragen akzeptabel, für echten Betrieb zu simpel.
+- `_parse_amount` ist eine einfache Regex (erste Zahl im Text) — findet "CHF 30'000.-" korrekt, würde aber bei mehreren Zahlen im Freitext (z. B. "30000 oder vielleicht 35000") die erste nehmen, nicht unbedingt die gemeinte.
+- Der System-Prompt (`prompts/intent_extraction_v1.md`) ist v1, nicht gegen eine grössere Fragen-Stichprobe kalibriert — die 8 Testfragen oben sind alle plausibel korrekt, aber kein systematisches Eval-Set.
+
+**Erweiterungen:**
+- Ein kleines Few-Shot-Beispiel-Set im Prompt (aktuell nur inline-Beispiele in der Erklärung, keine expliziten Input→Output-Paare) könnte Grenzfälle wie den "Möbel"-Fund oben zuverlässiger machen.
+- `ClarificationAnswer.default_used` könnte künftig auch bei `target_chf` einen Hinweis liefern (aktuell `None`, da es dort keinen sinnvollen Default-Betrag gibt) - bewusst so gelassen, aber falls das Frontend hier auch eine Meldung erwartet, müsste `validate_extraction`/T7 das nachziehen.

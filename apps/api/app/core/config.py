@@ -74,6 +74,13 @@ ASSISTANT_LLM_TIMEOUT_SECONDS = float(os.environ.get("ASSISTANT_LLM_TIMEOUT_SECO
 SALARY_GROWTH_DEFAULT_PCT = float(os.environ.get("SALARY_GROWTH_DEFAULT_PCT", "1.0"))
 INFLATION_DEFAULT_PCT = float(os.environ.get("INFLATION_DEFAULT_PCT", "1.5"))
 
+# Ab diesem Betrag gilt eine `affordability`-Frage als "grosse Anschaffung"
+# (issue: "Grosse Anschaffung ohne Zahlungsart" löst die Bar/Leasing-
+# Rückfrage aus, T3). Unkalibrierter Startwert, gleiche Kategorie wie
+# OUTLIER_MIN_ABSOLUTE_CHF oben - eine Plausibilitätsgrenze, keine
+# fachlich hergeleitete Zahl.
+LARGE_PURCHASE_THRESHOLD_CHF = float(os.environ.get("LARGE_PURCHASE_THRESHOLD_CHF", "3000"))
+
 # Puffer-Schwelle for the `tight` state: below this many months of variable
 # spending, an otherwise-reachable goal counts as "knapp" instead of "ja".
 # Issue's own "offene Frage": explicitly a starting value pending

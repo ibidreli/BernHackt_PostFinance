@@ -54,17 +54,17 @@ app = FastAPI(
     description=(
         "Zukunftsprognose & Szenario-Simulation. Read-only OData service "
         "over an in-memory snapshot of the account export - no database. "
-        "See /odata/$metadata for the CSDL, /docs for interactive Swagger UI."
+        "See /api/v1/$metadata for the CSDL, /docs for interactive Swagger UI."
     ),
     version="0.1.0",
     lifespan=lifespan,
 )
 app.add_middleware(ODataVersionMiddleware)
 install_odata_error_handlers(app)
-app.include_router(forecast_router, prefix="/odata")
+app.include_router(forecast_router, prefix="/api/v1")
 
 
-@app.get("/odata/$metadata", tags=["odata"], include_in_schema=False)
+@app.get("/api/v1/$metadata", tags=["odata"], include_in_schema=False)
 def odata_metadata() -> Response:
     """CSDL service document (T9). The three actual resources
     (RecurringPayments/GetForecast/Simulate) are wired in T10."""
