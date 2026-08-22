@@ -64,6 +64,22 @@ _CACHED_NO_MATCH_PREFIX = "Im Offline-Modus sind nur die vorbereiteten Demo-Frag
 )
 
 
+def _category_percent_prefix(extracted) -> str:
+    """Wording for the `category_percent_hint` unsupported case ("Kantine
+    halbieren", "weniger bei Coop einkaufen"): no 5th adjustment type was
+    added (team decision, see ASSISTANT_STATUS.md) - variable/Topf-2
+    spending has no fixed rhythm to cancel/adjust. This only rephrases the
+    *existing* generic unsupported text with the merchant/category name
+    the LLM already extracted (`merchant_hint`/`target_label`) - no new
+    LLM call, no computed number, so it can't misrepresent anything."""
+    target = extracted.merchant_hint or extracted.target_label
+    if target:
+        return (
+            f'"{target}"-Ausgaben schwanken zu stark für eine feste Kürzung, das kann ich nicht seriös durchrechnen.'
+        )
+    return "Eine pauschale Kürzung einer ganzen Ausgaben-Kategorie kann ich nicht seriös durchrechnen."
+
+
 def _unsupported_response(prefix: str | None = None, source: str = "live") -> AssistantAskResponse:
     answer = f"{prefix} {_UNSUPPORTED_SUFFIX}" if prefix else _UNSUPPORTED_SUFFIX
     return AssistantAskResponse(
@@ -199,7 +215,12 @@ def ask(
         if validation.status == "unsupported":
             if conversation_id:
                 conversation_store.clear(conversation_id)
-            return _unsupported_response(source=mode)
+            prefix = (
+                _category_percent_prefix(extracted)
+                if extracted.intent == "what_if" and extracted.category_percent_hint
+                else None
+            )
+            return _unsupported_response(prefix, source=mode)
 
         if validation.status == "needs_clarification":
             assert validation.clarification is not None
