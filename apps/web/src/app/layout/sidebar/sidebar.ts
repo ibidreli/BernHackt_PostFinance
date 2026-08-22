@@ -2,7 +2,7 @@ import { Component, input } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import {
   LucideChartLine,
-  LucideLayoutGrid,
+  LucideCircleDot,
   LucideLogOut,
   LucideMessageSquare,
 } from '@lucide/angular';
@@ -10,7 +10,7 @@ import {
 interface NavItem {
   label: string;
   route: string;
-  icon: 'overview' | 'forecast' | 'assistant';
+  icon: 'explorer' | 'forecast' | 'assistant';
 }
 
 interface NavGroup {
@@ -23,7 +23,7 @@ interface NavGroup {
     RouterLink,
     RouterLinkActive,
     LucideChartLine,
-    LucideLayoutGrid,
+    LucideCircleDot,
     LucideLogOut,
     LucideMessageSquare,
   ],
@@ -37,7 +37,7 @@ export class Sidebar {
     {
       label: 'Tools',
       items: [
-        { label: 'Overview', route: '/', icon: 'overview' },
+        { label: 'Kategorien', route: '/', icon: 'explorer' },
         { label: 'Prognose', route: '/forecast', icon: 'forecast' },
         { label: 'Assistenz', route: '/assistant', icon: 'assistant' },
       ],

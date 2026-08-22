@@ -29,3 +29,11 @@ export function chf(value: number): string {
   const digits = Math.abs(Math.round(value)).toLocaleString('de-CH').replace(/[^\d]/g, "'");
   return `${value < 0 ? '-' : ''}CHF ${digits}`;
 }
+
+/** Two decimals - for a single booking, the centimes are the point. */
+export function chfExact(value: number): string {
+  const digits = Math.abs(value)
+    .toLocaleString('de-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    .replace(/[^\d.,]/g, "'");
+  return `${value < 0 ? '-' : ''}CHF ${digits}`;
+}
