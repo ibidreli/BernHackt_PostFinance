@@ -47,6 +47,15 @@ def _no_balance_error(exc: NoBalanceAvailableError) -> HTTPException:
 # --- GET /RecurringPayments (EntitySet) --------------------------------
 
 
+# All RecurringPayment fields except `amount_history`, which is excluded
+# from the default (no explicit `$select`) representation - see the route
+# docstring below for why. Client can still ask for it by name.
+_DEFAULT_SELECT = (
+    "recurring_id,merchant,category_main,category_sub,amount_chf,interval,"
+    "day_of_month,flow,first_seen,last_seen,is_active"
+)
+
+
 def _to_entity(rp: Any) -> SimpleNamespace:
     """Flattens a RecurringPayment into a namespace that also carries its
     computed `recurring_id` (not a real model field, see
@@ -72,7 +81,11 @@ def _to_entity(rp: Any) -> SimpleNamespace:
         "- `$select` - comma-separated field list, projects to a subset of fields\n"
         "- `$orderby` - `field` or `field desc`, comma-separated for multiple keys\n"
         "- `$top` / `$skip` - pagination\n"
-        "- `$count=true` - adds `@odata.count` (total matches before `$top`/`$skip`)"
+        "- `$count=true` - adds `@odata.count` (total matches before `$top`/`$skip`)\n\n"
+        "`amount_history` is excluded unless explicitly requested via `$select` (e.g. "
+        "`$select=merchant,amount_history`) - found via testing: it makes up ~88% of the "
+        "payload for a merchant with a long, unstable price history, which is wasted bytes "
+        "for the common case (e.g. populating a cancel-subscription picker)."
     ),
     # No response_model here: $select can project to an arbitrary subset
     # of fields, which a fixed Pydantic model can't represent - see
@@ -92,7 +105,12 @@ def list_recurring_payments(
     entities = [_to_entity(rp) for rp in request.app.state.recurring_payments]
     try:
         result = apply_query_options(
-            entities, filter_=odata_filter, select=select, orderby=orderby, top=top, skip=skip
+            entities,
+            filter_=odata_filter,
+            select=select or _DEFAULT_SELECT,
+            orderby=orderby,
+            top=top,
+            skip=skip,
         )
     except ODataFilterError as exc:
         raise HTTPException(status_code=400, detail=f"Invalid $filter: {exc}") from exc

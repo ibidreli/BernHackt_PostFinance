@@ -20,17 +20,27 @@ contribute zero band width. Topf 2 ("variable") transactions feed
 
 Band construction (simplification, documented): each category's monthly
 P25/median/P75 (T5) is summed across categories into one aggregate
-monthly rate, then divided by ~30.44 into a daily rate that accumulates
-linearly over the horizon. This assumes categories are independent and
-ignores correlation between them - a real joint-distribution model is out
-of scope for a hackathon timeline; summing per-category percentiles is
-the standard simplification here (mirrors how the issue itself describes
-the median as computed "pro Kategorie" and implies aggregation).
+monthly figure. This assumes categories are independent and ignores
+correlation between them - a real joint-distribution model is out of
+scope for a hackathon timeline; summing per-category percentiles is the
+standard simplification here (mirrors how the issue itself describes the
+median as computed "pro Kategorie" and implies aggregation).
+
+The *expected* line accumulates linearly over the horizon (monthly median
+x months elapsed - expected spend really does scale with time). The
+*band width* around it does not: it scales with sqrt(months elapsed),
+not months elapsed, so it doesn't assume every month re-hits its most
+extreme P25/P75 value independently (12 bad months in a row). This is
+the standard variance-of-a-sum-of-independent-periods argument (CLT) and
+was added after testing showed linear growth made the 365d band
+implausibly wide (~CHF 15'000 span) - see `_build_series` for the exact
+formula and `STATUS.md` (T7) for the before/after numbers.
 """
 
 from __future__ import annotations
 
 import calendar
+import math
 from collections import defaultdict
 from datetime import date, timedelta
 from typing import Literal, NamedTuple
@@ -196,10 +206,14 @@ def _known_events(
 # --- Topf-2 baseline (T5) --------------------------------------------
 
 
-def _variable_daily_rates(
+def _variable_monthly_totals(
     classifications: list[Classification], as_of: date
 ) -> tuple[float, float, float, int]:
-    """(daily_median, daily_p25, daily_p75, months_used)."""
+    """(monthly_median, monthly_p25, monthly_p75, months_used) - aggregate
+    Topf-2 totals per month, summed across categories. Kept at monthly
+    granularity (not converted to a daily rate) because the band's
+    time-scaling (`_build_series`) needs it in "how many calibrated
+    months does this horizon span" terms, not raw days."""
     variable_txs = [c.transaction for c in classifications if c.topf == "variable"]
     stats = monthly_category_stats(variable_txs, as_of=as_of, months=VARIABLE_BASELINE_MONTHS)
     if not stats:
@@ -214,15 +228,9 @@ def _variable_daily_rates(
         # Issue edge case: "Unter 3 Monaten: Prognose ohne Band, mit
         # Hinweis" - collapse the band to a line rather than show a
         # meaningless P25/P75 computed from 1-2 data points.
-        rate = total_median / _DAYS_PER_MONTH
-        return rate, rate, rate, months_used
+        return total_median, total_median, total_median, months_used
 
-    return (
-        total_median / _DAYS_PER_MONTH,
-        total_p25 / _DAYS_PER_MONTH,
-        total_p75 / _DAYS_PER_MONTH,
-        months_used,
-    )
+    return total_median, total_p25, total_p75, months_used
 
 
 def _excluded_outliers(
@@ -245,9 +253,9 @@ def _build_series(
     as_of: date,
     horizon_end: date,
     events: list[_DatedEvent],
-    daily_median: float,
-    daily_p25: float,
-    daily_p75: float,
+    monthly_median: float,
+    monthly_p25: float,
+    monthly_p75: float,
     resolution_days: int,
     buffer_chf: float,
     salary_day: int | None,
@@ -257,6 +265,26 @@ def _build_series(
         signed = e.amount_chf if e.flow == "income" else -e.amount_chf
         events_by_date[e.date] += signed
 
+    # Band-width dampening: found via testing that linear growth (rate ×
+    # days) makes the band absurdly wide at 365d (~CHF 15'000 span in
+    # testing) - it assumes every month re-hits its most extreme P25/P75
+    # value independently, i.e. 12 bad months in a row. Real variance
+    # partially cancels out over time (the standard deviation of a sum of
+    # ~independent months grows with sqrt(months), not with months
+    # itself - basic CLT intuition). So only the *expected* spend grows
+    # linearly; the spread around it grows with sqrt(months elapsed) -
+    # for horizons *beyond* one calibrated month. Below one month, sqrt(x)
+    # is actually *larger* than x (e.g. sqrt(0.1) ≈ 0.32), which would
+    # make short horizons - including the default "next_salary" view,
+    # the app's main headline number - artificially *more* uncertain than
+    # before. Found via testing this exact regression before shipping it.
+    # `_time_scale` is therefore linear up to 1 month (matches the
+    # calibration granularity - there's no sub-month percentile data to
+    # justify sqrt behaviour there anyway) and sqrt-dampened beyond it,
+    # continuous at the 1-month mark (both pieces equal 1.0 there).
+    spread_lower = monthly_p75 - monthly_median  # pessimistic gap, per calibrated month
+    spread_upper = monthly_median - monthly_p25  # optimistic gap, per calibrated month
+
     points: list[SeriesPoint] = []
     tight: TightDate | None = None
     cum_known = 0.0
@@ -264,12 +292,12 @@ def _build_series(
     while True:
         cum_known += events_by_date.get(d, 0.0)
         elapsed = (d - as_of).days
-        var_expected = daily_median * elapsed
-        var_lower = daily_p75 * elapsed  # pessimistic = spends more (P75) -> lower balance
-        var_upper = daily_p25 * elapsed  # optimistic = spends less (P25) -> higher balance
+        months_elapsed = elapsed / _DAYS_PER_MONTH
+        var_expected = monthly_median * months_elapsed
+        dampened_spread = months_elapsed if months_elapsed <= 1 else math.sqrt(months_elapsed)
         expected = opening_balance + cum_known - var_expected
-        lower = opening_balance + cum_known - var_lower
-        upper = opening_balance + cum_known - var_upper
+        lower = opening_balance + cum_known - var_expected - spread_lower * dampened_spread
+        upper = opening_balance + cum_known - var_expected + spread_upper * dampened_spread
 
         if tight is None and lower < buffer_chf:
             # Issue: computed from the pessimistic (lower) curve on
@@ -345,7 +373,9 @@ def forecast(
     events = _known_events(effective_recurring, as_of, horizon_end, cancel_from=cancel_from)
     events += [e for e in one_off_events if as_of <= e.date <= horizon_end]
 
-    daily_median, daily_p25, daily_p75, months_used = _variable_daily_rates(classifications, as_of)
+    monthly_median, monthly_p25, monthly_p75, months_used = _variable_monthly_totals(
+        classifications, as_of
+    )
     resolution_days = 7 if horizon == "365d" else 1
 
     series, tight_date = _build_series(
@@ -353,9 +383,9 @@ def forecast(
         as_of,
         horizon_end,
         events,
-        daily_median,
-        daily_p25,
-        daily_p75,
+        monthly_median,
+        monthly_p25,
+        monthly_p75,
         resolution_days,
         buffer_chf,
         salary_rp.day_of_month if salary_rp else None,

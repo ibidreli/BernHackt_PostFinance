@@ -36,17 +36,36 @@ _INTERVAL_RANGES: list[tuple[Interval, range]] = [
 ]
 
 MIN_OCCURRENCES = 3
-"""Need at least 3 dates (2 gaps) to say anything about a rhythm. Groups
-below this are left undetected here - T4 handles them as Topf-3
-candidates ("<3 Vorkommen/12 Monate").
+"""Need at least 3 dates (2 gaps) to say anything about a rhythm at all.
+Groups below this are left undetected here - T4 handles them as Topf-3
+candidates ("<3 Vorkommen/12 Monate")."""
 
-Known limitation: at exactly 3 occurrences, a "quarterly" classification
-can be coincidence rather than a real rhythm - e.g. three sporadic visits
-to the same shop happening to land ~90 days apart. Verified against the
-sample data: this does happen (a handful of physical-store merchants get
-tagged "quarterly" off 3-8 occurrences). T3 reports what the gaps say;
-deciding whether a detected rhythm is trustworthy enough for Topf 1 is a
-T4 concern (e.g. cross-checking amount stability, category)."""
+# quarterly/yearly need more evidence than monthly before being trusted -
+# found via testing (`app/inspect_forecast.py` against a 365d horizon):
+# at exactly 3 occurrences, the *median* of just 2 wildly different gaps
+# can coincidentally land in the "quarterly" range even though neither
+# gap individually looks quarterly - e.g. a merchant visited 4 days apart
+# once and then again 630 days later still has a median gap of ~90. This
+# showed up as fabricated-looking "known payments" (a restaurant tagged
+# as a recurring quarterly bill) in the year view - exactly the kind of
+# thing the issue's "Beweis, dass die Prognose die Daten wirklich
+# versteht" moment must NOT show.
+_MIN_OCCURRENCES_BY_INTERVAL: dict[Interval, int] = {"quarterly": 4, "yearly": 4}
+
+# Every individual gap (not just the median) must fall in this window -
+# initially only added for quarterly/yearly, but testing then found the
+# *identical* problem at "monthly" too: a restaurant visited on gaps of
+# 7/16/35/49/57/201 days still had a median of ~30 and got accepted as a
+# monthly recurring payment, still active, projected 12x into the year
+# view. So this check applies to all three real intervals, not just the
+# two it was first written for. Catches exactly the "AVEC" case above
+# (gaps of 4 and 630 days, median ~90) and the "RATHAUS" case (gaps of
+# 7/16/35/49/57/201, median ~30) that a median-only check misses.
+_INTERVAL_GAP_TOLERANCE: dict[Interval, tuple[int, int]] = {
+    "monthly": (15, 45),
+    "quarterly": (45, 135),
+    "yearly": (270, 460),
+}
 
 
 def _canonical_merchant_key(merchant: str) -> str:
@@ -122,8 +141,27 @@ def _detect_interval(dates: list[date]) -> Interval:
     gaps = [(b - a).days for a, b in zip(dates, dates[1:])]
     gap = median(gaps)
     for interval, day_range in _INTERVAL_RANGES:
-        if gap in day_range:
-            return interval
+        if gap not in day_range:
+            continue
+        min_occurrences = _MIN_OCCURRENCES_BY_INTERVAL.get(interval)
+        if min_occurrences is not None and len(dates) < min_occurrences:
+            continue  # not enough evidence yet for this interval - stays irregular
+        tolerance = _INTERVAL_GAP_TOLERANCE.get(interval)
+        if tolerance is not None:
+            lo, hi = tolerance
+            in_range = sum(1 for g in gaps if lo <= g <= hi)
+            # A MAJORITY of gaps in range, not ALL of them - found via
+            # testing that "all" is too strict: real subscriptions do
+            # occasionally skip a cycle (Netflix, checked against the
+            # full history, has 40 gaps and exactly one 61-day outlier -
+            # a single skipped payment - the other 39 are textbook
+            # monthly; requiring 100% rejected the entire subscription
+            # over that one gap). 80% tolerates a skip or two while still
+            # rejecting mostly-erratic patterns like "RATHAUS" (2 of 7
+            # gaps in range, ~29%).
+            if in_range / len(gaps) < 0.8:
+                continue  # median got lucky, most individual gaps don't back it up
+        return interval
     return "irregular"
 
 

@@ -38,6 +38,8 @@ curl "http://localhost:8000/odata/RecurringPayments?\$filter=is_active%20eq%20tr
 
 `$select` projiziert auf ein Feld-Subset — die Response hat dann kein festes Schema mehr, deshalb ist dieser Endpunkt in Swagger bewusst nicht strikt typisiert (im Gegensatz zu den anderen beiden).
 
+**`amount_history` ist standardmässig ausgeklammert** (ohne explizites `$select`), da es bei manchen Merchants sehr lang wird — gemessen: 88 % der Payload einer 10-Item-Liste war `amount_history` eines einzelnen Merchants mit 196 Verlaufseinträgen. Explizit abrufbar per `$select=merchant,amount_history`.
+
 ---
 
 ### `GET /odata/GetForecast`

@@ -82,6 +82,8 @@ Lebendes Dokument: pro Teilschritt (T0–T11) ein Satz Stand, plus **Bugs** (gef
 - Konfidenz-Score statt harter Intervall-Klassifikation.
 - Kategorie-basierte Overrides für bekannte Fixkosten-Typen (Krankenkasse, Steuern, BKW, 13. Monatslohn) — direkte Vorarbeit für T4.
 
+**Nachtrag — Pitch-Fix:** Die oben beschriebene Quartals-/Jahres-Zufallserkennung wurde konkret vor dem Pitch behoben (`_detect_interval`: höhere Mindest-Vorkommenzahl + Mehrheits-Plausibilitätsprüfung der einzelnen Lücken, gilt jetzt auch für `monthly`). Details, inkl. zwei dabei selbst gefundener Über-/Unterkorrekturen: siehe T7-Abschnitt unten.
+
 ---
 
 ## T4 — Drei-Topf-Klassifikation
@@ -141,8 +143,19 @@ Lebendes Dokument: pro Teilschritt (T0–T11) ein Satz Stand, plus **Bugs** (gef
 
 **Erweiterungen:**
 - 5. Eingriffstyp für Topf-2-Kategorie-Anpassungen, falls "Kantine halbieren" wörtlich gebraucht wird.
-- Wurzel-Zeitskalierung für die Bandbreite bei langen Horizonten.
 - `diff.cumulative_series`-Alignment über Datum statt Listenposition, für den allgemeinen Fall unterschiedlicher `horizon_end`.
+
+**Nachtrag — Pitch-Fix "Band bei 365d wirkt nicht kompetent":**
+Band-Breite wuchs linear mit der Zeit (Tagesrate × Tage) → bei 365 Tagen Spanne von ~CHF 15'852 (−5807 bis +10046), unglaubwürdig breit. Fix: nur der Erwartungswert wächst weiter linear, die Bandbreite um ihn herum wächst mit `√Monate` statt `Monate` (Zentraler Grenzwertsatz: Streuung einer Summe unabhängiger Monate wächst mit der Wurzel der Anzahl, nicht linear). Reduziert 365d-Spanne auf CHF 4'726 (Faktor ~3.35, nahe am erwarteten √12≈3.46).
+
+**Dabei ein selbst gefundener Bug vor dem Ausliefern:** Reine `√Monate`-Skalierung hätte **kurze** Horizonte (< 1 Monat) breiter statt schmaler gemacht (`√x > x` für `x<1`) — genau die "bis zum nächsten Lohn"-Standardansicht wäre stärker verunsichert worden (Spanne CHF 130 → CHF 428 im Test). Gefixt: Skalierung ist linear bis 1 Monat (matcht die Kalibrierungsgranularität), erst danach `√Monate`-gedämpft, stetig am 1-Monats-Punkt. `next_salary`-Spanne danach wieder bei CHF 134 (praktisch unverändert).
+
+**Nachtrag — Pitch-Fix "Jahresansicht zeigt erfundene Fixkosten":**
+`quarterly`/`yearly` bekamen eine höhere Mindest-Vorkommenzahl (4 statt 3) plus eine Prüfung, dass **jede einzelne** Lücke (nicht nur der Median) plausibel ist. Erster Durchlauf: 20 → 12 verdächtige Einträge (u. a. `RATHAUS`) weiterhin sichtbar, weil sie über `monthly` reinrutschten, nicht über `quarterly`/`yearly` — die ursprüngliche Annahme "monthly hat das Problem nicht" war falsch (Gegenbeweis: `RATHAUS` mit Lücken von 7/16/35/49/57/201 Tagen, Median zufällig ~30). Gap-Plausibilitätsprüfung auf `monthly` erweitert.
+
+**Zweiter selbst gefundener Bug vor dem Ausliefern:** "Alle Lücken müssen passen" war zu strikt — Netflix hat 40 Lücken, 39 davon sauber monatlich, **eine einzige** übersprungene Zahlung (61 Tage) reichte, um die komplette Erkennung zu verwerfen (verifiziert). Realistische Abos überspringen gelegentlich einen Zyklus. Fix: Mehrheits-Kriterium (≥80 % der Lücken müssen passen) statt "alle". Ergebnis: 0 verdächtige Einträge, Netflix/Touring/Bankpaket/Spotify/OpenAI/Render.com weiterhin korrekt erkannt.
+
+**Bewusst in Kauf genommen:** `SWISSCOM` (67 % Trefferquote) und `STEUERVERWALTUNG` (43 %) fallen jetzt auf `irregular` zurück und verschwinden aus Topf 1. Geprüft und für plausibel befunden — beide vermischen unter derselben Ersttoken-Gruppierung mehrere unterschiedliche Zahlungsströme (Swisscom: Basisabo + WINGO-Mobile-Zusatz; Steuerverwaltung: Steuerzahlungen UND -rückerstattungen mit unterschiedlicher Rhythmik). `irregular` (→ Topf 2, variable Baseline) ist hier ehrlicher als eine erzwungene, tatsächlich nicht sauber monatliche Fixkosten-Markierung.
 
 ---
 
@@ -200,6 +213,7 @@ Lebendes Dokument: pro Teilschritt (T0–T11) ein Satz Stand, plus **Bugs** (gef
 
 **Grenzen:**
 - `GET /odata/RecurringPayments` bleibt bewusst ohne `response_model` (also ohne strikt typisiertes Swagger-Schema) — `$select` kann auf ein beliebiges Feld-Subset projizieren, ein festes Pydantic-Schema würde bei Verwendung von `$select` an der eigenen Validierung scheitern. Stattdessen ausführliche Swagger-`description` mit Beispielen.
+- **Gefunden & gefixt (nach T11, beim gemeinsamen Testen):** `amount_history` war standardmässig in jedem `RecurringPayments`-Listeneintrag enthalten — bei einem Merchant mit 196 Verlaufseinträgen machte das 88 % der Payload einer 10-Item-Antwort aus (25.4 KB → 2.8 KB nach dem Fix). Kein Bug im engeren Sinne, aber kein guter Default für einen Listen-Endpunkt. Fix: `amount_history` nur noch enthalten, wenn explizit per `$select` angefordert (`_DEFAULT_SELECT` in `app/api/routes/forecast.py`).
 - `$metadata` (CSDL) und `API.md` können bei Schema-Änderungen auseinanderlaufen, da beide von Hand gepflegt werden (siehe T9-Grenzen).
 
 **Erweiterungen:**
