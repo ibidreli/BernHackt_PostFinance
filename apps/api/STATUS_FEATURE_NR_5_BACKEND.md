@@ -220,3 +220,30 @@ Weitere Annahmen siehe T0–T13 unten, jeweils im Kontext.
 
 **Erweiterungen:**
 - `ask()` könnte den `source`-Wert schon jetzt differenzieren, aktuell immer `"live"` - wird erst mit T9 (Cache-Modus) tatsächlich `"cached"` liefern können.
+
+---
+
+## T8 — prompts/ (System-Prompts versioniert)
+
+**Stand:** Fertig — beide Prompts existierten bereits (T3/T7), hier reviewt, ein `prompts/README.md` mit Versionierungs-Konvention ergänzt, und ein während des Reviews gefundener echter Fund behoben.
+
+**Bugs:**
+- **Dokumentations-Fehler:** Der Kommentar-Header in `intent_extraction_v1.md` verwies auf eine nicht existierende Datei `intent_formulation_v1.md` statt der echten `answer_formulation_v1.md`. Beim Review gefunden, korrigiert.
+
+**Echter Fund, live behoben (nicht nur Doku):** Beim Review von T5s offen gelassenem "Weltreise löst Bar/Leasing-Rückfrage aus"-Fund (siehe T5) direkt hier angegangen, weil es sich um genau die Art Prompt-Verfeinerung handelt, für die T8 da ist:
+
+- Neues Feld `ExtractedIntent.payment_type_relevant: bool` (Default `true`) - das Modell markiert `false`, wenn `target_label` eine Erfahrung/Dienstleistung ist (Reise, Ferien, Ausbildung, Event) statt eines physischen, finanzierbaren Guts.
+- `validate_extraction`s Bar/Leasing-Trigger prüft jetzt zusätzlich dieses Feld.
+- Live verifiziert an 5 Fällen: "Weltreise" (15'000 und 8'000 CHF) löst jetzt korrekt **keine** Rückfrage mehr aus (`validation: ok`), "Auto"/"Töff" weiterhin korrekt schon. Kompletter Regressionstest über T3 (`inspect_intent`) und T5 (`inspect_answer`, inkl. des echten End-to-End-Pfads) danach erneut grün.
+- **Nicht perfekt, dokumentiert statt verschwiegen:** "Kann ich mir eine Hochzeit für 20'000 leisten?" löst weiterhin die Rückfrage aus (`payment_type_relevant=true`) - ein echter Grenzfall, den das Modell anders zieht als ein Mensch es vielleicht täte. Im `prompts/README.md` explizit als bekannte Grenze benannt statt stillschweigend als "gelöst" zu behandeln.
+
+**Design-Entscheidungen:**
+- **`prompts/README.md`** dokumentiert die Versionierungs-Konvention: Solange eine Version aktiv in Entwicklung ist, wird sie in-place korrigiert (kein Versionssprung pro Fix) - ein neuer `_v2`-Dateiname ist für inhaltlich bedeutsame Wechsel nach dem Go-Live gedacht, mit der alten Version weiterhin im Repo zur Nachvollziehbarkeit.
+- Beide Prompts bleiben strikt rollenbeschränkt (Extraktion entscheidet nichts, Formulierung rechnet nichts) - im README nochmal explizit zusammengefasst, weil das Issue ausdrücklich sagt, dass die technische Jury danach fragen wird.
+
+**Grenzen:**
+- Kein automatisiertes Eval-Set für die Prompts - Verifikation ist die Menge der live gegen die echte API getesteten Fragen in den `inspect_*`-Skripten, kein systematisches Prompt-Testing-Framework. Für eine Hackathon-Zeitspanne bewusst nicht gebaut.
+- `payment_type_relevant` ist eine Heuristik des Sprachmodells, keine feste Liste - kann bei ungewöhnlichen Formulierungen weiterhin daneben liegen (siehe Hochzeit-Beispiel).
+
+**Erweiterungen:**
+- Ein kleines Few-Shot-Beispiel-Set für Grenzfälle wie "Hochzeit" könnte die `payment_type_relevant`-Erkennung schärfen, ohne eine hartcodierte Liste zu brauchen.

@@ -86,6 +86,12 @@ class ExtractedIntent(BaseModel):
     payment_type: Literal["cash", "leasing"] | None = Field(
         default=None, description='Nur gesetzt, falls im Text genannt ("bar", "leasing").'
     )
+    payment_type_relevant: bool = Field(
+        default=True,
+        description="false, wenn target_label eine Erfahrung/Dienstleistung ist (Reise, Ferien, Ausbildung, "
+        "Event) statt eines physischen, finanzierbaren Guts (Auto, Möbel, Elektronik) - man least keine "
+        "Weltreise. Steuert, ob die Bar/Leasing-Rückfrage überhaupt sinnvoll ist (siehe Prompt).",
+    )
 
 
 # --- LLM call ------------------------------------------------------------
@@ -194,6 +200,7 @@ def validate_extraction(extracted: ExtractedIntent, request_horizon: AssistantHo
         and extracted.target_chf is not None
         and extracted.target_chf >= LARGE_PURCHASE_THRESHOLD_CHF
         and extracted.payment_type is None
+        and extracted.payment_type_relevant
     ):
         return ValidationResult("needs_clarification", _FIXED_CLARIFICATIONS["payment_type"], None)
 
