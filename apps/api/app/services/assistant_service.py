@@ -26,6 +26,7 @@ from __future__ import annotations
 
 from datetime import date
 
+from app.core.config import ASSISTANT_MODE
 from app.models.recurring_payment import RecurringPayment
 from app.models.transaction import Transaction
 from app.repositories.balance_repository import BalanceRepository
@@ -36,6 +37,7 @@ from app.services.answer_service import (
     answer_time_to_goal,
     answer_what_if,
 )
+from app.services.cache_service import CACHED_QUESTIONS, match_cached_question
 from app.services.chart_service import build_chart
 from app.services.classification import Classification
 from app.services.conversation_state import (
@@ -44,7 +46,7 @@ from app.services.conversation_state import (
     build_prior_turn_summary,
     resolve_pending_clarification,
 )
-from app.services.formulation_service import FormulationInput, formulate_answer
+from app.services.formulation_service import FormulationInput, formulate_answer, template_answer
 from app.services.intent_service import extract_intent, validate_extraction
 from app.services.intent_service import apply_clarification_answer as _apply_clarification_answer
 
@@ -53,8 +55,12 @@ _UNSUPPORTED_SUFFIX = (
     "wiederkehrenden Zahlung bewirkt, oder wann du ein Sparziel erreichst."
 )
 
+_CACHED_NO_MATCH_PREFIX = "Im Offline-Modus sind nur die vorbereiteten Demo-Fragen verfügbar: " + " / ".join(
+    f'"{q.text}"' for q in CACHED_QUESTIONS
+)
 
-def _unsupported_response(prefix: str | None = None) -> AssistantAskResponse:
+
+def _unsupported_response(prefix: str | None = None, source: str = "live") -> AssistantAskResponse:
     answer = f"{prefix} {_UNSUPPORTED_SUFFIX}" if prefix else _UNSUPPORTED_SUFFIX
     return AssistantAskResponse(
         intent="unsupported",
@@ -65,7 +71,7 @@ def _unsupported_response(prefix: str | None = None) -> AssistantAskResponse:
         chart=None,
         assumptions_used=None,
         clarification=None,
-        source="live",
+        source=source,
     )
 
 
@@ -125,13 +131,25 @@ def ask(
     balance_repo: BalanceRepository,
     conversation_store: ConversationStore,
     as_of: date | None = None,
+    mode: str | None = None,
 ) -> AssistantAskResponse:
     """Raises `AssistantLLMTimeoutError`/`AssistantLLMError` (from
-    `app.services.llm_client`) if either LLM call fails - callers (T11)
-    must turn that into an explicit error response, never a silent
-    fallback that looks like a normal answer (your instruction)."""
+    `app.services.llm_client`) if either LLM call fails in `mode="live"`
+    - callers (T11) must turn that into an explicit error response,
+    never a silent fallback that looks like a normal answer (your
+    instruction). `mode="cached"` (T9) makes neither LLM call at all -
+    see `app.services.cache_service`/`template_answer` - so it can't
+    raise these.
+
+    `mode=None` (the default) reads the configured `ASSISTANT_MODE` at
+    call time, not import time - read fresh from `app.core.config` each
+    call rather than frozen as a parameter default, so it reflects the
+    actual running configuration even under test/hot-reload.
+    """
     if as_of is None:
         as_of = date.today()
+    if mode is None:
+        mode = ASSISTANT_MODE
 
     conversation_id = request.context.conversation_id if request.context else None
     context_pending_field = request.context.pending_clarification if request.context else None
@@ -155,18 +173,29 @@ def ask(
         if extracted.intent in ("affordability", "time_to_goal") and extracted.target_chf is None:
             if conversation_id:
                 conversation_store.clear(conversation_id)
-            return _unsupported_response("Ich konnte den Betrag weiterhin nicht erkennen.")
+            return _unsupported_response("Ich konnte den Betrag weiterhin nicht erkennen.", source=mode)
 
         resolved_horizon = extracted.horizon_override or state.last_horizon
     else:
-        prior_summary = build_prior_turn_summary(state) if state else None
-        extracted = extract_intent(request.message, request.horizon, prior_turn_summary=prior_summary)
+        if mode == "cached":
+            # T9: no LLM call #1 at all - exact match against the fixed
+            # demo-question set (app.services.cache_service).
+            cached = match_cached_question(request.message)
+            if cached is None:
+                if conversation_id:
+                    conversation_store.clear(conversation_id)
+                return _unsupported_response(_CACHED_NO_MATCH_PREFIX, source=mode)
+            extracted = cached.extracted
+        else:
+            prior_summary = build_prior_turn_summary(state) if state else None
+            extracted = extract_intent(request.message, request.horizon, prior_turn_summary=prior_summary)
+
         validation = validate_extraction(extracted, request.horizon)
 
         if validation.status == "unsupported":
             if conversation_id:
                 conversation_store.clear(conversation_id)
-            return _unsupported_response()
+            return _unsupported_response(source=mode)
 
         if validation.status == "needs_clarification":
             assert validation.clarification is not None
@@ -192,7 +221,7 @@ def ask(
                 chart=None,
                 assumptions_used=None,
                 clarification=validation.clarification,
-                source="live",
+                source=mode,
             )
 
         resolved_horizon = extracted.horizon_override or request.horizon
@@ -214,30 +243,29 @@ def ask(
         else:  # pragma: no cover - validate_extraction already filtered "unsupported" out above
             if conversation_id:
                 conversation_store.clear(conversation_id)
-            return _unsupported_response()
+            return _unsupported_response(source=mode)
     except UnresolvedAdjustmentError as exc:
         if conversation_id:
             conversation_store.clear(conversation_id)
-        return _unsupported_response(str(exc))
+        return _unsupported_response(str(exc), source=mode)
 
     # --- T6: Chart-Auswahl ----------------------------------------------
     chart = build_chart(extracted.intent, result)
 
-    # --- LLM call #2: Formulierung ---------------------------------------
-    answer_text = formulate_answer(
-        FormulationInput(
-            intent=extracted.intent,
-            status=result.status,
-            horizon=resolved_horizon,
-            target_label=extracted.target_label,
-            merchant_label=extracted.merchant_hint,
-            adjustment_description=_describe_adjustment(extracted),
-            facts=result.facts,
-            levers=result.levers,
-            assumptions_used=result.assumptions_used,
-            default_used_note=default_note,
-        )
+    # --- LLM call #2: Formulierung (T9: template statt LLM in cached-Modus) ---
+    formulation_input = FormulationInput(
+        intent=extracted.intent,
+        status=result.status,
+        horizon=resolved_horizon,
+        target_label=extracted.target_label,
+        merchant_label=extracted.merchant_hint,
+        adjustment_description=_describe_adjustment(extracted),
+        facts=result.facts,
+        levers=result.levers,
+        assumptions_used=result.assumptions_used,
+        default_used_note=default_note,
     )
+    answer_text = template_answer(formulation_input) if mode == "cached" else formulate_answer(formulation_input)
 
     if conversation_id:
         conversation_store.save(
@@ -262,5 +290,5 @@ def ask(
         chart=chart,
         assumptions_used=result.assumptions_used,
         clarification=None,
-        source="live",
+        source=mode,
     )

@@ -31,6 +31,12 @@ class AssistantLLMError(Exception):
 
 
 class AssistantLLMTimeoutError(AssistantLLMError):
-    def __init__(self, seconds: float):
+    """`stage` names which of the two LLM calls timed out ("Extraktion"
+    or "Formulierung", set by the respective call sites) - T9 addition,
+    so the eventual HTTP error (T11) can be specific instead of a bare
+    "something timed out"."""
+
+    def __init__(self, seconds: float, stage: str = "LLM-Call"):
         self.seconds = seconds
-        super().__init__(f"LLM-Call hat das Timeout von {seconds}s überschritten.")
+        self.stage = stage
+        super().__init__(f"{stage} hat das Timeout von {seconds}s überschritten.")

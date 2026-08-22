@@ -247,3 +247,29 @@ Weitere Annahmen siehe T0–T13 unten, jeweils im Kontext.
 
 **Erweiterungen:**
 - Ein kleines Few-Shot-Beispiel-Set für Grenzfälle wie "Hochzeit" könnte die `payment_type_relevant`-Erkennung schärfen, ohne eine hartcodierte Liste zu brauchen.
+
+---
+
+## T9 — Cache-Modus + Timeout-Fehlermeldung
+
+**Stand:** Fertig — `services/cache_service.py` (5 Demo-Fragen, exaktes Text-Matching, kein LLM), `template_answer()` in `services/formulation_service.py` (deterministische Formulierung ohne LLM), `ask()` um `mode`-Parameter erweitert. Live verifiziert mit einem harten Beweis: der OpenAI-Client wird im Test per `unittest.mock.patch` komplett blockiert (wirft `AssertionError` bei jedem Aufrufversuch) - alle 5 Demo-Fragen inkl. Rückfrage-Flow laufen trotzdem durch. Das zeigt echte Offline-Fähigkeit, nicht nur "der Code sieht so aus, als würde er das LLM überspringen".
+
+**Bugs (einer gefunden und behoben):**
+- **Vorzeichen-Fehler im Template:** Bei einer `what_if`-Anpassung mit negativer Wirkung (z. B. eine neue Ausgabe) stand *"die Bilanz verbessert sich um CHF -50"* - grammatisch falsch und inhaltlich irreführend (liest sich wie eine Verbesserung). Behoben mit einer vorzeichen-bewussten Formulierung (`_impact_phrase`): "verbessert"/"verschlechtert" plus Betrags-Betrag, live verifiziert am Fitness-Beispiel.
+
+**Design-Entscheidungen:**
+- **Cache-Matching ist exaktes (normalisiertes) Text-Matching, kein Fuzzy-Match.** Bewusst ehrlich gehalten: das ist ein kontrollierter Demo-Fallback ("WLAN streikt in der Halle"), keine allgemeine Offline-NLU. Im README/STATUS klar so benannt statt eine Fuzzy-Matching-Fähigkeit vorzutäuschen, die nicht wirklich da ist.
+- **`template_answer()` ist NICHT dieselbe Funktion wie der im Issue erwähnte "Timeout-Fallback auf Template-Formulierung"** - die gibt es laut deiner Korrektur nicht mehr (Timeout = expliziter Fehler). `template_answer()` ist ausschliesslich für `ASSISTANT_MODE=cached` da. Beide Mechanismen wurden im Issue-Text zusammen erwähnt, sind hier aber bewusst getrennt: der eine ersetzt einen nicht verfügbaren LLM-Call planmässig (Cache), der andere macht einen fehlgeschlagenen LLM-Call sichtbar (Timeout-Fehler).
+- **`template_answer()` liest Zahlen direkt aus `facts`/`levers`** - kann per Konstruktion nie einer angezeigten Zahl widersprechen, im Gegensatz zum LLM-Pfad (dafür existiert T10). Bewusst inhaltlich an dieselben Regeln wie `answer_formulation_v1.md` angelehnt (welcher Status nennt was, CHF-Rundung auf 100 bei 5y/10y, Monate statt CHF bei Puffer/Wartezeit), damit beide Pfade sich für den Nutzer konsistent anfühlen.
+- **5 Demo-Fragen, hart im Code hinterlegt** mit `ExtractedIntent`-Werten, die aus echten `extract_intent()`-Läufen stammen (nicht erfunden) - siehe `cache_service.py`. Bewusst eine Mischung: 2 lösen realistisch eine Rückfrage aus (beweist, dass der Rückfrage-Flow auch offline funktioniert, da `resolve_pending_clarification`/`apply_clarification_answer` nie ein LLM brauchen), 3 beantworten direkt über alle drei Intents und beide `what_if`-Aktionstypen (cancel/add) hinweg.
+- **`AssistantLLMTimeoutError` kennt jetzt `stage`** ("Extraktion" oder "Formulierung") - macht die künftige HTTP-Fehlermeldung (T11) präzise statt eines generischen "etwas ist timeout".
+- **`mode` wird zur Aufrufzeit aus `ASSISTANT_MODE` gelesen, nicht als eingefrorener Funktions-Default** - vermeidet Staleness bei Hot-Reload/Tests, konsistent mit T0s "keine versteckten globalen Zustände"-Linie.
+
+**Beobachtung, keine Fehlfunktion:** Die Netflix-Demo-Frage liefert bei `horizon=present` einen wenig eindrücklichen `impact_cumulative_chf=0.0` (Netflix fällt einfach nicht in das enge "bis zum nächsten Lohn"-Fenster) - für den Pitch sollte diese Demo-Frage mit einem längeren Horizont (1y/5y) über den Umschalter gestellt werden, nicht bei `present`. Kein Code-Problem, reine Demo-Empfehlung.
+
+**Grenzen:**
+- Die 5 Demo-Fragen sind exakt (normalisiert) zu matchen - Gross-/Kleinschreibung, Leerzeichen und Satzzeichen am Ende werden toleriert, Umformulierungen nicht. `GET /suggestions` (T11) sollte diese exakten Texte als Chips anbieten, damit ein Klick immer trifft.
+- Kein Mechanismus, der prüft, ob die 5 hartcodierten `ExtractedIntent`-Werte noch zur aktuellen Prompt-Version passen, falls der Extraktions-Prompt sich künftig ändert (z. B. neue Felder) - müsste bei einer Prompt-Änderung manuell nachgezogen werden.
+
+**Erweiterungen:**
+- `GET /suggestions` (T11) könnte im `cached`-Modus automatisch nur die 5 hier hinterlegten Fragen zeigen, im `live`-Modus freiere Vorschläge - noch nicht verdrahtet.

@@ -126,7 +126,7 @@ def extract_intent(
             timeout=ASSISTANT_LLM_TIMEOUT_SECONDS,
         )
     except openai.APITimeoutError as exc:
-        raise AssistantLLMTimeoutError(ASSISTANT_LLM_TIMEOUT_SECONDS) from exc
+        raise AssistantLLMTimeoutError(ASSISTANT_LLM_TIMEOUT_SECONDS, stage="Extraktion") from exc
     except openai.OpenAIError as exc:
         raise AssistantLLMError(f"Extraktion fehlgeschlagen: {exc}") from exc
 
