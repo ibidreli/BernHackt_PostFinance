@@ -15,6 +15,7 @@ Diese Datei ist die kompakte Referenz für die drei Endpunkte. Für Details zu B
 | Endpunkt | HTTP | OData-Konzept | Zweck |
 |---|---|---|---|
 | `/api/v1/RecurringPayments` | GET | EntitySet | Liste erkannter wiederkehrender Zahlungen, mit vollen Query-Optionen |
+| `/api/v1/Alerts` | GET | EntitySet | Auffaelligkeiten aus Transaktionen: Duplikate, grosse Zahlungen, Kategorie-Spikes |
 | `/api/v1/GraphMonths` | GET | EntitySet-artig mit OData-Query | Verfügbare Monate für den Kategorien-Explorer (max. 12) |
 | `/api/v1/GraphNodes` | GET | EntitySet-artig mit OData-Query | Flache, filterbare Graph-Knoten für Drilldown (Monat/Flow/Kategorie/Merchant) |
 | `/api/v1/GetForecast` | GET | Function | Basisprognose ohne Szenario |
@@ -30,6 +31,11 @@ Query-Optionen: `$filter`, `$select`, `$orderby`, `$top`, `$skip`, `$count`.
 curl "http://localhost:8000/api/v1/RecurringPayments?\$filter=is_active%20eq%20true&\$orderby=amount_chf%20desc&\$top=5&\$count=true"
 ```
 
+Ohne Zusatzparameter liefert der Endpoint die UI-sinnvolle Sicht: aktive Ausgaben (`flow='expense'`, `is_active=true`). Fuer Diagnose/Forecast-Debugging kann die Liste erweitert werden:
+
+- `include_inactive=true` zeigt auch inaktive Zahlungen.
+- `include_income=true` zeigt auch wiederkehrende Einnahmen wie Lohn.
+
 **`$filter`-Grammatik** (handgeschrieben, kein vollständiges OData-ABNF — siehe `app/odata/query.py`):
 
 - Operatoren: `eq`, `ne`, `gt`, `ge`, `lt`, `le`, kombinierbar mit `and`, `or`, `not`, Klammern
@@ -41,6 +47,33 @@ curl "http://localhost:8000/api/v1/RecurringPayments?\$filter=is_active%20eq%20t
 `$select` projiziert auf ein Feld-Subset — die Response hat dann kein festes Schema mehr, deshalb ist dieser Endpunkt in Swagger bewusst nicht strikt typisiert (im Gegensatz zu den anderen beiden).
 
 **`amount_history` ist standardmässig ausgeklammert** (ohne explizites `$select`), da es bei manchen Merchants sehr lang wird — gemessen: 88 % der Payload einer 10-Item-Liste war `amount_history` eines einzelnen Merchants mit 196 Verlaufseinträgen. Explizit abrufbar per `$select=merchant,amount_history`.
+
+---
+
+Default-Filterung der Erkennung: strikte periodische Zahlungen (`monthly`/`quarterly`/`yearly`) werden gezeigt. Zusaetzlich kommen wenige aktive `irregular` Kommunikations-Zahlungen durch, wenn sie Abo-aehnlich wirken; alle `irregular` Gruppen lassen sich fuer Debugging mit `RECURRING_INCLUDE_IRREGULAR=true` anzeigen.
+
+---
+
+### `GET /api/v1/Alerts`
+
+Liefert die beim Startup deterministisch berechneten Auffaelligkeiten. Query-Optionen: `$filter`, `$select`, `$orderby`, `$top`, `$skip`, `$count`.
+
+```bash
+curl "http://localhost:8000/api/v1/Alerts?\$filter=severity%20eq%20'danger'&\$orderby=date%20desc&\$count=true"
+```
+
+Felder: `alert_id`, `type` (`duplicate_charge` | `large_payment` | `category_spike`), `severity` (`danger` | `warning` | `info`), `date`, `month`, `merchant`, `category_main`, `category_sub`, `amount_chf`, `baseline_chf`, `count`, `booking_text`, `transaction_id`, `transaction_ids`.
+
+`transaction_id` ist die primaere `Transaction.id` (`tx-*`) fuer Deep-Links in den Kategorien-Explorer. Dort kann das Frontend ueber `GraphNodes?include_transactions=true&$filter=tx_id eq 'tx-123'` den passenden Transaktions-Kreis finden. Bei Duplikaten und Kategorie-Spikes stehen alle betroffenen IDs in `transaction_ids`.
+
+Erkennung:
+
+- `duplicate_charge`: gleicher Tag, kanonisierter Merchant, gleicher Betrag, mindestens 2 Buchungen, Betrag mindestens `ALERT_DUPLICATE_MIN_CHF` (Default CHF 20).
+- Standardmaessig werden nur Alerts im Lookback-Fenster `ALERT_LOOKBACK_MONTHS` geliefert (Default 12 Monate, `0` deaktiviert den Filter).
+- `large_payment`: bestehende Topf-3/Outlier-Klassifikation, aber nur Ausgaben ab `ALERT_LARGE_PAYMENT_MIN_CHF` (Default CHF 200). Stabile monatliche Dauerauftraege werden unterdrueckt, auch wenn die normale Recurring-Erkennung sie wegen Merchant-Extraktion nicht erwischt.
+- `category_spike`: nur Topf-2/variable Ausgaben; Monatsumme der Kategorie mindestens `ALERT_SPIKE_MULTIPLIER` mal 6-Monats-Median und Delta mindestens `ALERT_SPIKE_MIN_DELTA_CHF`; mindestens `ALERT_SPIKE_MIN_MONTHS` Baseline-Monate. Defaults: 2.5x, CHF 250, 4 Monate.
+
+Alle Alert-Typen ignorieren interne Transfers (`Transaction.is_transfer`) und Einnahmen.
 
 ---
 

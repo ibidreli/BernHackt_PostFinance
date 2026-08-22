@@ -93,6 +93,8 @@ def _to_entity(rp: Any) -> SimpleNamespace:
 )
 def list_recurring_payments(
     request: Request,
+    include_inactive: bool = Query(False, description="Include inactive recurring payments."),
+    include_income: bool = Query(False, description="Include recurring income such as salary."),
     odata_filter: str | None = Query(
         None, alias="$filter", description="e.g. `is_active eq true and flow eq 'expense'`"
     ),
@@ -102,7 +104,13 @@ def list_recurring_payments(
     skip: int | None = Query(None, alias="$skip", ge=0),
     count: bool = Query(False, alias="$count", description="Include `@odata.count` in the response."),
 ) -> dict:
-    entities = [_to_entity(rp) for rp in request.app.state.recurring_payments]
+    recurring_payments = request.app.state.recurring_payments
+    if not include_inactive:
+        recurring_payments = [rp for rp in recurring_payments if rp.is_active]
+    if not include_income:
+        recurring_payments = [rp for rp in recurring_payments if rp.flow == "expense"]
+
+    entities = [_to_entity(rp) for rp in recurring_payments]
     try:
         result = apply_query_options(
             entities,

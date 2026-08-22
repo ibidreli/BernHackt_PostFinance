@@ -1,9 +1,9 @@
 """Static OData v4 `$metadata` CSDL document (T9).
 
 Static, not generated from the Pydantic schemas: the service exposes a
-fixed, small set of OData resources (`RecurringPayments`, `GetForecast`,
-`Simulate` from `app/api/routes/forecast.py`; `GraphNodes`/`GraphMonths`
-from `app/api/routes/graph_odata.py`), so hand-writing the CSDL once is
+fixed, small set of OData resources (`RecurringPayments`, `Alerts`,
+`GetForecast`, `Simulate` from `app/api/routes/forecast.py`;
+`GraphNodes`/`GraphMonths` from `app/api/routes/graph_odata.py`), so hand-writing the CSDL once is
 simpler and more transparent than building a schema-to-CSDL generator
 for a hackathon timeline. Keep this in sync with
 `app/schemas/forecast.py` by hand if fields change. The Future-Me
@@ -85,6 +85,24 @@ METADATA_XML = """<?xml version="1.0" encoding="UTF-8"?>
         <Property Name="month" Type="Edm.String" Nullable="false"/>
         <Property Name="is_default" Type="Edm.Boolean" Nullable="false"/>
         <Property Name="sort_key" Type="Edm.Int32" Nullable="false"/>
+      </EntityType>
+
+      <EntityType Name="Alert">
+        <Key><PropertyRef Name="alert_id"/></Key>
+        <Property Name="alert_id" Type="Edm.String" Nullable="false"/>
+        <Property Name="type" Type="Edm.String" Nullable="false"/>
+        <Property Name="severity" Type="Edm.String" Nullable="false"/>
+        <Property Name="date" Type="Edm.Date"/>
+        <Property Name="month" Type="Edm.String"/>
+        <Property Name="merchant" Type="Edm.String"/>
+        <Property Name="category_main" Type="Edm.String"/>
+        <Property Name="category_sub" Type="Edm.String"/>
+        <Property Name="amount_chf" Type="Edm.Double" Nullable="false"/>
+        <Property Name="baseline_chf" Type="Edm.Double"/>
+        <Property Name="count" Type="Edm.Int32"/>
+        <Property Name="booking_text" Type="Edm.String"/>
+        <Property Name="transaction_id" Type="Edm.String"/>
+        <Property Name="transaction_ids" Type="Collection(Edm.String)"/>
       </EntityType>
 
       <ComplexType Name="NextSalary">
@@ -182,6 +200,7 @@ METADATA_XML = """<?xml version="1.0" encoding="UTF-8"?>
         <EntitySet Name="RecurringPayments" EntityType="Forecast.RecurringPayment"/>
         <EntitySet Name="GraphNodes" EntityType="Forecast.GraphNode"/>
         <EntitySet Name="GraphMonths" EntityType="Forecast.GraphMonth"/>
+        <EntitySet Name="Alerts" EntityType="Forecast.Alert"/>
         <FunctionImport Name="GetForecast" Function="Forecast.GetForecast"/>
         <ActionImport Name="Simulate" Action="Forecast.Simulate"/>
       </EntityContainer>
