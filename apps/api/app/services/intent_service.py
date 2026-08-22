@@ -73,7 +73,16 @@ class ExtractedIntent(BaseModel):
     category_percent_hint: bool = Field(
         default=False,
         description='true, wenn die Frage eine prozentuale Änderung einer ganzen Kategorie beschreibt '
-        '("Kantine halbieren") statt eines konkreten Postens - technisch nicht abbildbar, siehe Prompt.',
+        '("Kantine halbieren") statt eines konkreten Postens - wird über adjust_category simuliert, siehe Prompt.',
+    )
+    category_hint: str | None = Field(
+        default=None,
+        description='Nur bei category_percent_hint: Freitext-Name der Kategorie, z.B. "Gastronomie", "Kleidung".',
+    )
+    percent: float | None = Field(
+        default=None,
+        description='Nur bei category_percent_hint: die Änderung in Prozent, negativ für Reduktion '
+        '("halbieren" -> -50, "20% weniger" -> -20).',
     )
     adjustment_kind: Literal["cancel", "adjust", "add", "one_off"] | None = Field(
         default=None, description="Nur bei what_if: welcher der 4 Anpassungstypen gemeint ist."
@@ -175,10 +184,13 @@ def validate_extraction(extracted: ExtractedIntent, request_horizon: AssistantHo
         return ValidationResult("unsupported", None, "LLM hat die Frage keinem der drei Typen zugeordnet.")
 
     if extracted.intent == "what_if" and extracted.category_percent_hint:
-        # Team decision (STATUS.md): "Kantine halbieren"-artige Fragen
-        # bleiben unsupported, kein 5. Adjustment-Typ.
+        # Sollstatus revised the Feature-4 decision: category questions
+        # route through the adjust_category adjustment type now. Without
+        # a recognizable category name there is still nothing to match.
+        if extracted.category_hint:
+            return ValidationResult("ok", None, None)
         return ValidationResult(
-            "unsupported", None, "Kategorie-Prozent-Anpassung, mit keinem der 4 Adjustment-Typen abbildbar."
+            "unsupported", None, "Kategorie-Anpassung ohne erkennbaren Kategorienamen."
         )
 
     if extracted.intent in ("affordability", "time_to_goal") and extracted.target_chf is None:

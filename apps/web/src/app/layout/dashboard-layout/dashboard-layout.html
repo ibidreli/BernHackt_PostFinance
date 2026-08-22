@@ -55,5 +55,51 @@
     <div class="hidden w-80 shrink-0 flex-col overflow-y-auto py-2 lg:flex">
       <ng-container [ngTemplateOutlet]="railTemplate" />
     </div>
+
+    <!-- Below lg the rail becomes a bottom sheet - without this, the
+         page controls simply don't exist on mobile. Conditionally
+         rendered (not CSS-hidden), so the sheet's copy of the template
+         only enters the DOM while it is actually open. -->
+    <button
+      type="button"
+      class="fixed bottom-4 right-4 z-30 grid size-12 place-items-center rounded-full bg-foreground text-background shadow-lg lg:hidden"
+      aria-label="Optionen anzeigen"
+      aria-haspopup="dialog"
+      [attr.aria-expanded]="railOpen()"
+      (click)="railOpen.set(true)"
+    >
+      <svg lucideSettings2 aria-hidden="true" class="size-5"></svg>
+    </button>
+
+    @if (railOpen()) {
+      <div class="fixed inset-0 z-40 lg:hidden" (keydown.escape)="railOpen.set(false)">
+        <button
+          type="button"
+          class="absolute inset-0 cursor-default bg-foreground/30"
+          aria-label="Optionen schliessen"
+          (click)="railOpen.set(false)"
+        ></button>
+        <div
+          class="animate-rise-in absolute inset-x-0 bottom-0 max-h-[70dvh] overflow-y-auto rounded-t-xl border-t border-border bg-background p-4 pb-6 shadow-lg"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Optionen"
+        >
+          <div class="flex items-center justify-between pb-2">
+            <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Optionen</p>
+            <button
+              type="button"
+              class="grid size-8 place-items-center rounded-full text-muted-foreground hover:bg-surface"
+              aria-label="Schliessen"
+              #sheetClose
+              (click)="railOpen.set(false)"
+            >
+              ×
+            </button>
+          </div>
+          <ng-container [ngTemplateOutlet]="railTemplate" />
+        </div>
+      </div>
+    }
   }
 </div>

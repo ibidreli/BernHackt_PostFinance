@@ -39,15 +39,22 @@ def odata_single(context_suffix: str, value: dict) -> dict:
     return {"@odata.context": f"{SERVICE_ROOT}/$metadata#{context_suffix}", **value}
 
 
+#: The endpoints that actually speak OData. The REST routes (`/graph*`,
+#: `/assistant/*`) and `/health` must not carry the version header - a
+#: client seeing it there could reasonably expect `$filter` to work.
+_ODATA_PATHS = frozenset(
+    f"{SERVICE_ROOT}/{name}"
+    for name in ("$metadata", "Alerts", "RecurringPayments", "GetForecast", "Simulate")
+)
+
+
 class ODataVersionMiddleware(BaseHTTPMiddleware):
-    """Stamps every response with `OData-Version: 4.0`. Applied
-    service-wide rather than only under /api/v1 for simplicity - harmless
-    on non-OData endpoints like /health, and the spec only says OData
-    responses must carry it, not that others mustn't."""
+    """Stamps OData responses with `OData-Version: 4.0`."""
 
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
-        response.headers["OData-Version"] = "4.0"
+        if request.url.path in _ODATA_PATHS:
+            response.headers["OData-Version"] = "4.0"
         return response
 
 

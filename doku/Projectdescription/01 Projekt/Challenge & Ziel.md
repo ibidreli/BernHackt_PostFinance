@@ -14,7 +14,7 @@ Gesucht: ein Ansatz, der Finanzdaten in **verständliche, relevante und wertvoll
 
 ## Die Antwort dieses Projekts
 
-Die App (Arbeitstitel im README: *rhylog*) ersetzt die Liste durch vier ineinandergreifende Sichten — jede beantwortet eine Frage, die sich Nutzer:innen tatsächlich stellen:
+Die App — **PostFinance Horizons** — ersetzt die Liste durch vier ineinandergreifende Sichten; jede beantwortet eine Frage, die sich Nutzer:innen tatsächlich stellen:
 
 1. **"Wie viel kann ich noch ausgeben?"** → [[Zukunftsprognose & Simulation]]: ein ehrlicher Korridor statt einer Punktzahl mit falscher Genauigkeit, ein Engpass-Datum, und Szenarien zum Durchspielen (Abo kündigen, Miete +200).
 2. **"Wohin fliesst mein Geld?"** → [[Kategorien-Explorer]]: hierarchisches Circle Packing, Kreisfläche = Franken-Betrag, zoombar bis zur einzelnen Buchung.

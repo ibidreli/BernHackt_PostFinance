@@ -65,6 +65,14 @@ CACHED_QUESTIONS: list[CachedQuestion] = [
             intent="what_if", adjustment_kind="add", merchant_hint="Fitness", amount_chf=50.0
         ),
     ),
+    CachedQuestion(
+        text="Was wäre, wenn ich Gastronomie halbiere?",
+        extracted=ExtractedIntent(
+            intent="what_if", category_percent_hint=True, category_hint="Gastronomie", percent=-50.0
+        ),
+        # The Sollstatus's adjust_category demo case - proves the category
+        # what-if path works fully offline too.
+    ),
 ]
 
 _WHITESPACE_RE = re.compile(r"\s+")

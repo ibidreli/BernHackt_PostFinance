@@ -16,7 +16,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes.assistant import router as assistant_router
 from app.api.routes.alerts import router as alerts_router
 from app.api.routes.forecast import router as forecast_router
-from app.api.routes.graph_odata import router as graph_odata_router
 from app.api.routes.graph import router as graph_router
 from app.core.config import ASSISTANT_MODE, CSV_PATH, OPENAI_API_KEY
 from app.data.data_personal import load_raw_transactions
@@ -74,7 +73,6 @@ app = FastAPI(
 )
 app.add_middleware(ODataVersionMiddleware)
 install_odata_error_handlers(app)
-app.include_router(graph_odata_router, prefix="/api/v1")
 app.include_router(graph_router, prefix="/api/v1")
 app.include_router(forecast_router, prefix="/api/v1")
 app.include_router(alerts_router, prefix="/api/v1")

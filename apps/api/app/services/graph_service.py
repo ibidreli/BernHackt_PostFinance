@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from statistics import median
-from types import SimpleNamespace
 
 from app.models.transaction import Transaction
 from app.schemas.graph import (
@@ -420,58 +419,3 @@ def build_graph(
         baseline_label=baseline_label,
         root=root,
     )
-
-
-def flatten_graph_nodes(
-    graph: GraphResponse,
-    include_transactions: bool = False,
-) -> list[SimpleNamespace]:
-    rows: list[SimpleNamespace] = []
-
-    def visit(node: GraphNode, parent_id: str | None):
-        tx = node.transaction if include_transactions else None
-        row = {
-            "node_id": node.id,
-            "parent_id": parent_id,
-            "month": graph.month,
-            "mode": graph.mode,
-            "node_type": node.node_type,
-            "level": node.level,
-            "label": node.label,
-            "flow": node.flow,
-            "amount_chf": node.amount_chf,
-            "transaction_count": node.transaction_count,
-            "rank": node.rank,
-            "merchant_count": node.merchant_count,
-            "category_main": node.category_main,
-            "category_sub": node.category_sub,
-            "merchant": node.merchant,
-            "has_children": bool(node.children),
-            "delta_baseline_median_chf": node.delta.baseline_median_chf if node.delta else None,
-            "delta_diff_chf": node.delta.diff_chf if node.delta else None,
-            "delta_diff_pct": node.delta.diff_pct if node.delta else None,
-            "delta_direction": node.delta.direction if node.delta else None,
-            "summary_child_count": node.summary.child_count if node.summary else None,
-            "summary_transaction_count": node.summary.transaction_count if node.summary else None,
-            "summary_total_amount_chf": node.summary.total_amount_chf if node.summary else None,
-            "summary_avg_amount_chf": node.summary.avg_amount_chf if node.summary else None,
-            "tx_id": tx.id if tx else None,
-            "tx_date": tx.date.isoformat() if tx else None,
-            "tx_value_date": tx.value_date.isoformat() if tx else None,
-            "tx_merchant": tx.merchant if tx else None,
-            "tx_merchant_canonical": tx.merchant_canonical if tx else None,
-            "tx_original_description": tx.original_description if tx else None,
-            "tx_amount_chf": tx.amount_chf if tx else None,
-            "tx_flow": tx.flow if tx else None,
-            "tx_category_main": tx.category_main if tx else None,
-            "tx_category_sub": tx.category_sub if tx else None,
-            "tx_original_amount": tx.original_amount if tx else None,
-            "tx_original_currency": tx.original_currency if tx else None,
-            "tx_status": tx.status if tx else None,
-        }
-        rows.append(SimpleNamespace(**row))
-        for child in node.children or []:
-            visit(child, node.id)
-
-    visit(graph.root, None)
-    return rows

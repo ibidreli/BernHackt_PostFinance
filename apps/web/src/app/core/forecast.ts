@@ -66,7 +66,16 @@ export type AdjustmentPayload =
   | { type: 'cancel_recurring'; recurring_id: string }
   | { type: 'adjust_recurring'; recurring_id: string; delta_chf: number }
   | { type: 'add_recurring'; label: string; amount_chf: number; interval: Interval; start_date: string }
-  | { type: 'one_off'; label: string; amount_chf: number; date: string };
+  | { type: 'one_off'; label: string; amount_chf: number; date: string }
+  | {
+      type: 'adjust_category';
+      category_main: string;
+      category_sub?: string | null;
+      // Exactly one of the two, enforced by the backend schema.
+      percent?: number;
+      delta_chf?: number;
+      effective_from?: string;
+    };
 
 /** An adjustment plus the chip label the UI shows for it. */
 export interface Adjustment {

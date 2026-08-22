@@ -247,6 +247,23 @@ class QueryResult:
     what `$count=true` reports."""
 
 
+def _filter_fields(node: Any) -> set[str]:
+    """All field names referenced anywhere in a `$filter` AST."""
+    if isinstance(node, Comparison):
+        return {node.field}
+    if isinstance(node, BoolOp):
+        return _filter_fields(node.left) | _filter_fields(node.right)
+    if isinstance(node, Not):
+        return _filter_fields(node.operand)
+    return set()
+
+
+def _check_fields(fields: set[str], allowed: frozenset[str], option: str) -> None:
+    unknown = sorted(fields - allowed)
+    if unknown:
+        raise ODataFilterError(f"Unknown field in {option}: {', '.join(unknown)}")
+
+
 def apply_query_options(
     items: list[T],
     filter_: str | None = None,
@@ -254,11 +271,25 @@ def apply_query_options(
     orderby: str | None = None,
     top: int | None = None,
     skip: int | None = None,
+    allowed_fields: frozenset[str] | None = None,
 ) -> QueryResult:
+    """`allowed_fields` turns a typo'd field name into a 400 instead of a
+    silently empty result or a `null` column - unknown fields in
+    `$filter`/`$select`/`$orderby` raise `ODataFilterError`."""
     result: list[Any] = list(items)
+
+    if allowed_fields is not None:
+        if select:
+            _check_fields({f.strip() for f in select.split(",") if f.strip()}, allowed_fields, "$select")
+        if orderby:
+            _check_fields(
+                {c.strip().split()[0] for c in orderby.split(",") if c.strip()}, allowed_fields, "$orderby"
+            )
 
     if filter_:
         ast = parse_filter(filter_)
+        if allowed_fields is not None:
+            _check_fields(_filter_fields(ast), allowed_fields, "$filter")
         result = [it for it in result if _evaluate(ast, it)]
 
     count = len(result)

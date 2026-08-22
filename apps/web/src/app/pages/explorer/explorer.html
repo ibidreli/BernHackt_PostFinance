@@ -46,6 +46,8 @@
         [blend]="blendT()"
         [mode]="graph.mode()"
         [dark]="theme.isDark()"
+        [alertIndex]="alertIndex()"
+        [alertsOnly]="alertsOnly()"
         [(focusId)]="focusId"
         [selectedId]="selected()?.id ?? null"
         (leafSelected)="selected.set($event)"
@@ -62,45 +64,44 @@
     }
   </div>
 
-  <!-- Zusammenfassungsleiste: ergänzt die Kreise, ersetzt sie nicht -->
-  @if (summaryVisible() && focus?.summary; as summary) {
-    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-surface px-3 py-2 text-sm">
-      <span>{{ summary.transaction_count }} Buchungen</span>
-      <span class="text-muted-foreground">·</span>
-      <span>Ø {{ chf(summary.avg_amount_chf) }}</span>
-      <span class="text-muted-foreground">·</span>
-      <span>Total {{ chf(summary.total_amount_chf) }}</span>
-      <button
-        type="button"
-        class="ml-auto text-sm text-muted-foreground underline"
-        (click)="showTable.set(!showTable())"
+  <!-- Details: eingeklappt hinter einem kleinen Plus - erst auf Wunsch
+       nimmt die Tabelle Platz ein -->
+  @if (focusStats(); as stats) {
+    <details class="group text-xs text-muted-foreground">
+      <!-- Total und Anzahl stehen schon im Breadcrumb - hier nur, was
+           dort fehlt -->
+      <summary
+        class="flex cursor-pointer select-none items-center gap-1 px-1 pb-1 list-none hover:text-foreground [&::-webkit-details-marker]:hidden"
       >
-        {{ showTable() ? 'Details ausblenden' : 'Details anzeigen' }}
-      </button>
-    </div>
-  }
-
-  @if (showTable() && summaryVisible()) {
-    <div class="max-h-56 overflow-y-auto rounded-lg border border-border">
-      <table class="table table-sm">
-        <thead>
-          <tr>
-            <th>Datum</th>
-            <th>Händler</th>
-            <th class="text-right">Betrag</th>
-          </tr>
-        </thead>
-        <tbody>
-          @for (node of focusTransactions(); track node.id) {
-            <tr class="cursor-pointer hover:bg-surface" (click)="selected.set(node)">
-              <td class="whitespace-nowrap">{{ dateLabel(node.transaction!.date) }}</td>
-              <td class="truncate">{{ node.transaction!.merchant_canonical }}</td>
-              <td class="whitespace-nowrap text-right tabular-nums">{{ chfExact(node.amount_chf) }}</td>
-            </tr>
-          }
-        </tbody>
-      </table>
-    </div>
+        <span
+          aria-hidden="true"
+          class="inline-block transition-transform duration-150 group-open:rotate-45"
+        >
+          +
+        </span>
+        Details · Ø {{ chf(stats.avg) }}
+      </summary>
+      <div class="max-h-32 overflow-y-auto rounded-lg border border-border/70">
+        <table class="table table-xs">
+          <tbody>
+            @for (node of visibleTransactions(); track node.id) {
+              <tr class="cursor-pointer border-border/40 hover:bg-surface" (click)="selected.set(node)">
+                <td class="whitespace-nowrap">{{ dateLabel(node.transaction!.date) }}</td>
+                <td class="max-w-0 truncate">{{ node.transaction!.merchant_canonical }}</td>
+                <td class="whitespace-nowrap text-right tabular-nums">{{ chfExact(node.amount_chf) }}</td>
+              </tr>
+            }
+            @if (stats.count > visibleTransactions().length) {
+              <tr>
+                <td colspan="3" class="text-center">
+                  … und {{ stats.count - visibleTransactions().length }} weitere
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </details>
   }
 
   <!-- Zeitachse: alle Monate sind vorgeladen, kein Request beim Ziehen -->
@@ -184,6 +185,52 @@
         </p>
       }
     </section>
+
+    <section>
+      <h2 class="px-1 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        Auffälligkeiten
+      </h2>
+      <div class="flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          class="rounded-full px-3 py-1.5 text-sm transition-colors"
+          [class.bg-foreground]="alertsOnly()"
+          [class.text-background]="alertsOnly()"
+          [class.bg-surface]="!alertsOnly()"
+          [class.text-muted-foreground]="!alertsOnly()"
+          [attr.aria-pressed]="alertsOnly()"
+          [disabled]="!monthAlertCount()"
+          (click)="alertsOnly.set(!alertsOnly())"
+        >
+          Nur Auffälligkeiten ({{ monthAlertCount() }})
+        </button>
+      </div>
+    </section>
+
+    <!-- Verbindungen in die anderen beiden Seiten (Sollstatus) -->
+    @if (connectable()) {
+      <section class="animate-rise-in">
+        <h2 class="px-1 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Weiterdenken
+        </h2>
+        <div class="flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            class="rounded-full border border-border px-3 py-1.5 text-sm text-muted-foreground hover:bg-surface hover:text-foreground"
+            (click)="simulateFocus()"
+          >
+            In Prognose simulieren
+          </button>
+          <button
+            type="button"
+            class="rounded-full border border-border px-3 py-1.5 text-sm text-muted-foreground hover:bg-surface hover:text-foreground"
+            (click)="askFutureMe()"
+          >
+            Future Me fragen
+          </button>
+        </div>
+      </section>
+    }
 
     <section>
       <h2 class="px-1 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Presets</h2>
@@ -271,6 +318,18 @@
             }
           </div>
         </dl>
+        @if (selectedAlerts().length) {
+          <div class="mt-3 space-y-1.5 px-1">
+            <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Warum sehe ich das?
+            </p>
+            @for (alert of selectedAlerts(); track alert.alert_id) {
+              <p class="rounded-lg px-2 py-1.5 text-xs" [class]="alertClasses(alert.severity)">
+                {{ alertSentence(alert) }}
+              </p>
+            }
+          </div>
+        }
       </section>
     }
   </div>

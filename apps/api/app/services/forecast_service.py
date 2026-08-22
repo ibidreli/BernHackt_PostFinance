@@ -76,6 +76,7 @@ from app.repositories.balance_repository import BalanceRepository
 from app.repositories.transaction_repository import monthly_category_stats
 from app.schemas.forecast import (
     AddRecurring,
+    AdjustCategory,
     AdjustRecurring,
     Adjustment,
     Assumptions,
@@ -132,6 +133,7 @@ class _ScenarioOverrides(NamedTuple):
     recurring_payments: list[RecurringPayment]
     cancel_from: dict[str, date]
     one_off_events: list[_DatedEvent]
+    category_adjustments: list[AdjustCategory] = []
 
 
 # --- date helpers ---------------------------------------------------------
@@ -231,23 +233,55 @@ def _known_events(
 # --- Topf-2 baseline (T5) --------------------------------------------
 
 
+def _category_factor(adj: AdjustCategory, matched_median_total: float) -> float:
+    """Uniform scale factor an adjustment applies to its matched
+    categories' median/P25/P75. `delta_chf` is distributed
+    proportionally across the matched sub-categories (it shifts the
+    *total*, not each sub individually); a zero-median match makes the
+    delta undistributable -> no-op."""
+    if adj.percent is not None:
+        return max(0.0, 1 + adj.percent / 100)
+    if matched_median_total <= 0:
+        return 1.0
+    return max(0.0, matched_median_total + adj.delta_chf) / matched_median_total
+
+
+def _matches(adj: AdjustCategory, category_main: str | None, category_sub: str | None) -> bool:
+    if adj.category_main != (category_main or ""):
+        return False
+    return adj.category_sub is None or adj.category_sub == (category_sub or "")
+
+
 def _variable_monthly_totals(
-    classifications: list[Classification], as_of: date
+    classifications: list[Classification],
+    as_of: date,
+    category_adjustments: list[AdjustCategory] | None = None,
 ) -> tuple[float, float, float, int]:
     """(monthly_median, monthly_p25, monthly_p75, months_used) - aggregate
     Topf-2 totals per month, summed across categories. Kept at monthly
     granularity (not converted to a daily rate) because the band's
     time-scaling (`_build_series`) needs it in "how many calibrated
-    months does this horizon span" terms, not raw days."""
+    months does this horizon span" terms, not raw days.
+
+    `category_adjustments` (adjust_category scenario) scale the matched
+    categories' stats before summing - the band scales along, so a
+    halved category also contributes half its spread."""
     variable_txs = [c.transaction for c in classifications if c.topf == "variable"]
     stats = monthly_category_stats(variable_txs, as_of=as_of, months=VARIABLE_BASELINE_MONTHS)
     if not stats:
         return 0.0, 0.0, 0.0, 0
 
     months_used = stats[0].months_used
-    total_median = sum(s.median_chf for s in stats)
-    total_p25 = sum(s.p25_chf for s in stats)
-    total_p75 = sum(s.p75_chf for s in stats)
+    scale: dict[int, float] = {}
+    for adj in category_adjustments or []:
+        matched = [i for i, s in enumerate(stats) if _matches(adj, s.category_main, s.category_sub)]
+        factor = _category_factor(adj, sum(stats[i].median_chf for i in matched))
+        for i in matched:
+            scale[i] = scale.get(i, 1.0) * factor
+
+    total_median = sum(s.median_chf * scale.get(i, 1.0) for i, s in enumerate(stats))
+    total_p25 = sum(s.p25_chf * scale.get(i, 1.0) for i, s in enumerate(stats))
+    total_p75 = sum(s.p75_chf * scale.get(i, 1.0) for i, s in enumerate(stats))
 
     if months_used < 3:
         # Issue edge case: "Unter 3 Monaten: Prognose ohne Band, mit
@@ -278,13 +312,19 @@ def _build_series(
     as_of: date,
     horizon_end: date,
     events: list[_DatedEvent],
-    monthly_median: float,
-    monthly_p25: float,
-    monthly_p75: float,
+    variable_schedule: list[tuple[date, float, float, float]],
     resolution_days: int,
     buffer_chf: float,
     salary_day: int | None,
 ) -> tuple[list[SeriesPoint], TightDate | None]:
+    """`variable_schedule`: (start_date, monthly_median, p25, p75)
+    segments, sorted, first entry at `as_of`. More than one segment only
+    when an `adjust_category` has a future `effective_from` - the
+    expected spend accumulates day by day at the active segment's rate,
+    so the curve bends on that day. The band uses the active segment's
+    spread with the same global sqrt dampening as before - a documented
+    simplification (no exact piecewise variance), consistent with the
+    band's other approximations."""
     events_by_date: dict[date, float] = defaultdict(float)
     for e in events:
         signed = e.amount_chf if e.flow == "income" else -e.amount_chf
@@ -307,18 +347,29 @@ def _build_series(
     # calibration granularity - there's no sub-month percentile data to
     # justify sqrt behaviour there anyway) and sqrt-dampened beyond it,
     # continuous at the 1-month mark (both pieces equal 1.0 there).
-    spread_lower = monthly_p75 - monthly_median  # pessimistic gap, per calibrated month
-    spread_upper = monthly_median - monthly_p25  # optimistic gap, per calibrated month
-
     points: list[SeriesPoint] = []
     tight: TightDate | None = None
     cum_known = 0.0
+    var_expected = 0.0
+    segment = 0
     d = as_of
     while True:
         cum_known += events_by_date.get(d, 0.0)
         elapsed = (d - as_of).days
         months_elapsed = elapsed / _DAYS_PER_MONTH
-        var_expected = monthly_median * months_elapsed
+        # Accumulated (not `median * months_elapsed`): the daily step is
+        # what lets a mid-horizon segment switch bend the curve. For a
+        # single segment both forms are numerically equivalent. The
+        # increment covers (d-1, d], so it uses the segment active
+        # *before* today's switch - on effective_from itself yesterday's
+        # rate still applies.
+        if elapsed > 0:
+            var_expected += variable_schedule[segment][1] / _DAYS_PER_MONTH
+        while segment + 1 < len(variable_schedule) and variable_schedule[segment + 1][0] <= d:
+            segment += 1
+        _, monthly_median, monthly_p25, monthly_p75 = variable_schedule[segment]
+        spread_lower = monthly_p75 - monthly_median  # pessimistic gap, per calibrated month
+        spread_upper = monthly_median - monthly_p25  # optimistic gap, per calibrated month
         dampened_spread = months_elapsed if months_elapsed <= 1 else math.sqrt(months_elapsed)
         expected = opening_balance + cum_known - var_expected
         lower = opening_balance + cum_known - var_expected - spread_lower * dampened_spread
@@ -398,9 +449,26 @@ def forecast(
     events = _known_events(effective_recurring, as_of, horizon_end, cancel_from=cancel_from)
     events += [e for e in one_off_events if as_of <= e.date <= horizon_end]
 
-    monthly_median, monthly_p25, monthly_p75, months_used = _variable_monthly_totals(
-        classifications, as_of
+    category_adjustments = _scenario.category_adjustments if _scenario else []
+    # Adjustments effective from as_of (or unset) shape the whole curve;
+    # each distinct future effective_from adds a segment where it (and
+    # everything before it) applies on top.
+    active = [
+        a for a in category_adjustments if a.effective_from is None or a.effective_from <= as_of
+    ]
+    pending = sorted(
+        (a for a in category_adjustments if a.effective_from and a.effective_from > as_of),
+        key=lambda a: a.effective_from,
     )
+    monthly_median, monthly_p25, monthly_p75, months_used = _variable_monthly_totals(
+        classifications, as_of, active
+    )
+    variable_schedule = [(as_of, monthly_median, monthly_p25, monthly_p75)]
+    for adjustment in pending:
+        active.append(adjustment)
+        median, p25, p75, _ = _variable_monthly_totals(classifications, as_of, active)
+        variable_schedule.append((adjustment.effective_from, median, p25, p75))
+
     resolution_days = 7 if horizon == "365d" else 1
 
     series, tight_date = _build_series(
@@ -408,9 +476,7 @@ def forecast(
         as_of,
         horizon_end,
         events,
-        monthly_median,
-        monthly_p25,
-        monthly_p75,
+        variable_schedule,
         resolution_days,
         buffer_chf,
         salary_rp.day_of_month if salary_rp else None,
@@ -544,6 +610,7 @@ def project_long_term(
     salary_growth_pct: float | None = None,
     inflation_pct: float | None = None,
     savings_rate_pct: float | None = None,
+    category_adjustments: list[AdjustCategory] | None = None,
 ) -> LongTermForecast:
     """Long-horizon projection for the chatbot's `1y`/`5y`/`10y` (or any
     other month count T5 needs to search) - see module docstring for why
@@ -565,7 +632,7 @@ def project_long_term(
     base_income = _monthly_equivalent_total(recurring_payments, "income")
     base_fixed = _monthly_equivalent_total(recurring_payments, "expense")
     base_var_median, base_var_p25, base_var_p75, months_used = _variable_monthly_totals(
-        classifications, as_of
+        classifications, as_of, category_adjustments
     )
 
     if savings_rate_pct is not None:
@@ -665,9 +732,15 @@ def apply_adjustments(
     result: dict[str, RecurringPayment] = {recurring_payment_id(rp): rp for rp in recurring_payments}
     cancel_from: dict[str, date] = {}
     one_offs: list[_DatedEvent] = []
+    category_adjustments: list[AdjustCategory] = []
 
     for adj in adjustments:
-        if isinstance(adj, CancelRecurring):
+        if isinstance(adj, AdjustCategory):
+            # Applied against the variable baseline, not the recurring
+            # payments - forecast() picks these up via the overrides.
+            category_adjustments.append(adj)
+
+        elif isinstance(adj, CancelRecurring):
             if adj.recurring_id not in result:
                 continue
             if adj.effective_from is None:
@@ -720,12 +793,18 @@ def apply_adjustments(
             )
 
     return _ScenarioOverrides(
-        recurring_payments=list(result.values()), cancel_from=cancel_from, one_off_events=one_offs
+        recurring_payments=list(result.values()),
+        cancel_from=cancel_from,
+        one_off_events=one_offs,
+        category_adjustments=category_adjustments,
     )
 
 
 def _monthly_equivalent_impact(
-    adjustments: list[Adjustment], baseline_recurring: list[RecurringPayment]
+    adjustments: list[Adjustment],
+    baseline_recurring: list[RecurringPayment],
+    classifications: list[Classification] | None = None,
+    as_of: date | None = None,
 ) -> float:
     """Net monthly-equivalent recurring impact of all adjustments
     combined, in "scenario minus baseline" terms: positive = the scenario
@@ -742,9 +821,31 @@ def _monthly_equivalent_impact(
     beats matching one ambiguous example number.
     """
     by_id = {recurring_payment_id(rp): rp for rp in baseline_recurring}
+
+    # Baseline category medians, for adjust_category impacts. Lazy: only
+    # computed when such an adjustment is actually present.
+    category_stats = None
+    if classifications is not None and as_of is not None and any(
+        isinstance(a, AdjustCategory) for a in adjustments
+    ):
+        variable_txs = [c.transaction for c in classifications if c.topf == "variable"]
+        category_stats = monthly_category_stats(
+            variable_txs, as_of=as_of, months=VARIABLE_BASELINE_MONTHS
+        )
+
     impact = 0.0
     for adj in adjustments:
-        if isinstance(adj, CancelRecurring):
+        if isinstance(adj, AdjustCategory):
+            if category_stats is None:
+                continue
+            matched_total = sum(
+                s.median_chf
+                for s in category_stats
+                if _matches(adj, s.category_main, s.category_sub)
+            )
+            # Positive = better: a cut (factor < 1) frees up money.
+            impact += matched_total * (1 - _category_factor(adj, matched_total))
+        elif isinstance(adj, CancelRecurring):
             rp = by_id.get(adj.recurring_id)
             if rp is None:
                 continue
@@ -804,7 +905,9 @@ def simulate(
         tight_shift = (scenario.tight_date.date - baseline.tight_date.date).days
 
     diff = Diff(
-        monthly_chf=_monthly_equivalent_impact(adjustments, recurring_payments),
+        monthly_chf=_monthly_equivalent_impact(
+            adjustments, recurring_payments, classifications, baseline.as_of
+        ),
         cumulative_series=diff_points,
         total_at_horizon_chf=total_at_horizon,
         tight_date_shift_days=tight_shift,

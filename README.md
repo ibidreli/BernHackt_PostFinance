@@ -1,4 +1,4 @@
-# BernHackt_PostFinance
+# PostFinance Horizons
 
 Project for Bern Hackt 2026
 
@@ -7,7 +7,7 @@ Challenge: [Beyond the List](https://www.bernhackt.ch/challenges/2026-beyond-the
 ## Project Structure
 
 ```text
-rhylog/
+horizons/
 ├── apps/
 │   ├── api/    # FastAPI, OData, no DB (in-memory CSV)
 │   └── web/    # Angular
@@ -60,9 +60,13 @@ pip install -r requirements.txt
 CSV_PATH=../../data/data_personal.csv uvicorn app.main:app --reload
 ```
 
-Tests:
+Tests (run keyless - the suite forces `ASSISTANT_MODE=cached`):
 
 ```bash
+# In the running container (tests/ is bind-mounted):
+docker compose exec api sh -c "pip install -q pytest httpx && python -m pytest tests"
+
+# Or locally (needs Python 3.12, matching the image):
 cd apps/api && pip install -r requirements-dev.txt && CSV_PATH=../../data/data_personal.csv python -m pytest
 ```
 

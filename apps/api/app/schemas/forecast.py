@@ -19,7 +19,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Annotated, Literal, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.models.recurring_payment import Interval
 
@@ -170,8 +170,41 @@ class OneOff(BaseModel):
     date: date
 
 
+class AdjustCategory(BaseModel):
+    """Preset: "Gastronomie -50 %" - scales a Topf-2 category's share of
+    the variable baseline. This revises the Feature-4 team decision that
+    category adjustments are out of scope (Sollstatus: the Kategorien
+    page invites exactly this intervention). Unknown categories are
+    silently ignored, same philosophy as a typo'd `recurring_id`."""
+
+    type: Literal["adjust_category"] = "adjust_category"
+    category_main: str
+    category_sub: str | None = Field(
+        default=None, description="null adjusts every sub-category of `category_main` together."
+    )
+    percent: float | None = Field(
+        default=None,
+        ge=-100,
+        description="Relative change, e.g. -50 halves the category. Exclusive with `delta_chf`.",
+    )
+    delta_chf: float | None = Field(
+        default=None,
+        description="Absolute CHF shift of the category's monthly median (band scales along). "
+        "Exclusive with `percent`.",
+    )
+    effective_from: date | None = Field(
+        default=None, description="Default: from `as_of`. If set, the curve bends on that day."
+    )
+
+    @model_validator(mode="after")
+    def _exactly_one_of_percent_or_delta(self) -> "AdjustCategory":
+        if (self.percent is None) == (self.delta_chf is None):
+            raise ValueError("Exactly one of `percent` or `delta_chf` must be set")
+        return self
+
+
 Adjustment = Annotated[
-    Union[CancelRecurring, AdjustRecurring, AddRecurring, OneOff],
+    Union[CancelRecurring, AdjustRecurring, AddRecurring, OneOff, AdjustCategory],
     Field(discriminator="type"),
 ]
 

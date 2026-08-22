@@ -1,7 +1,10 @@
 @let current = forecast.current();
 @let diff = forecast.diff();
 
-<div class="mx-auto flex h-full max-w-3xl flex-col justify-center gap-6">
+<!-- min-h-full statt h-full: wächst der Inhalt über den Viewport, wird
+     gescrollt statt oben abgeschnitten (justify-center + overflow) -->
+<div class="h-full overflow-y-auto">
+<div class="mx-auto flex min-h-full max-w-3xl flex-col justify-center gap-6 py-4">
   @if (forecast.error()) {
     <div class="rounded-xl border border-danger/30 bg-danger/10 p-6">
       <p class="font-medium text-danger">Prognose nicht berechenbar</p>
@@ -15,7 +18,18 @@
       <p class="text-4xl font-semibold tracking-tight tabular-nums sm:text-5xl">
         {{ headline() }}
       </p>
-      <p class="mt-2 text-lg text-foreground">{{ tightLabel() }}</p>
+      <p class="mt-2 text-lg text-foreground">
+        {{ tightLabel() }}
+        @if (spikeDriver(); as driver) {
+          <a
+            class="ml-1 text-sm text-muted-foreground underline hover:text-foreground"
+            [routerLink]="'/kategorien'"
+            [queryParams]="alertLink(driver)"
+          >
+            Treiber ansehen
+          </a>
+        }
+      </p>
       <p class="mt-1 text-sm text-muted-foreground">
         Zwischen {{ chf(current.free_to_spend.lower_chf) }} und
         {{ chf(current.free_to_spend.upper_chf) }}
@@ -54,24 +68,67 @@
       </p>
     }
 
-    @if (current.assumptions.excluded_outliers.length || current.assumptions.notes.length) {
-      <p class="text-xs text-muted-foreground">
-        Basis: {{ current.assumptions.variable_baseline_method }}, Band
-        {{ current.assumptions.band_method }}.
-        @if (outliers()) {
-          Ausgeschlossene Ausreisser: {{ outliers() }}.
-        }
-        @for (note of current.assumptions.notes; track note) {
-          {{ note }}
-        }
-      </p>
-    }
   } @else {
     <div class="flex items-center gap-2 text-sm text-muted-foreground">
       <span class="loading loading-dots loading-sm"></span> Prognose wird gerechnet …
     </div>
   }
 </div>
+</div>
+
+<!-- Auffälligkeiten-Overlay: legt sich mit Blur über die ganze Seite,
+     die Details erscheinen zentriert - geöffnet über die Rail-Chips -->
+@if (openGroup(); as group) {
+  <div class="fixed inset-0 z-50" (keydown.escape)="openGroup.set(null)">
+    <button
+      type="button"
+      class="absolute inset-0 cursor-default bg-background/50 backdrop-blur-md"
+      aria-label="Schliessen"
+      (click)="openGroup.set(null)"
+    ></button>
+    <div
+      class="animate-rise-in absolute left-1/2 top-1/2 w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-background p-5 shadow-xl"
+      role="dialog"
+      aria-modal="true"
+      [attr.aria-label]="'Auffälligkeiten ' + group.label"
+    >
+      <div class="flex items-start justify-between gap-2">
+        <h2 class="flex items-center gap-2 text-sm font-semibold">
+          <span class="size-2.5 rounded-full" [class]="dotClass(group.severity)" aria-hidden="true"></span>
+          {{ group.label }}
+        </h2>
+        <button
+          type="button"
+          class="grid size-7 place-items-center rounded-full text-muted-foreground hover:bg-surface"
+          aria-label="Schliessen"
+          (click)="openGroup.set(null)"
+        >
+          ×
+        </button>
+      </div>
+      <ul class="mt-3 space-y-2.5">
+        @for (alert of group.alerts; track alert.alert_id) {
+          <li class="flex items-start gap-2 text-sm">
+            <span
+              class="mt-1.5 size-2 shrink-0 rounded-full"
+              [class]="dotClass(alert.severity)"
+              aria-hidden="true"
+            ></span>
+            <span class="flex-1">{{ alertSentence(alert) }}</span>
+            <a
+              class="shrink-0 text-xs text-muted-foreground underline hover:text-foreground"
+              [routerLink]="'/kategorien'"
+              [queryParams]="alertLink(alert)"
+              (click)="openGroup.set(null)"
+            >
+              ansehen
+            </a>
+          </li>
+        }
+      </ul>
+    </div>
+  </div>
+}
 
 <!-- Rechte Leiste: gleiche eingerückte Optik wie die Sidebar. Alles ist
      ein Pill - Horizont, Presets und aktive Eingriffe sprechen dieselbe
@@ -145,6 +202,16 @@
         }
       </div>
 
+      @if (forecast.adjustments().length) {
+        <button
+          type="button"
+          class="mt-2 rounded-full border border-border px-3 py-1.5 text-sm text-muted-foreground hover:bg-surface hover:text-foreground"
+          (click)="askFutureMe()"
+        >
+          Future Me dazu fragen
+        </button>
+      }
+
       @if (menuOpen()) {
         <button
           type="button"
@@ -175,6 +242,49 @@
               <li class="px-2 py-1.5 text-sm text-muted-foreground">Keine weiteren Abos.</li>
             }
           </ul>
+
+          @if (categories().length) {
+            <p class="border-t border-border pt-3 pb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Kategorie anpassen
+            </p>
+            <div class="flex flex-col gap-1.5 pb-3">
+              <select
+                class="select select-sm bg-surface"
+                aria-label="Kategorie"
+                [value]="catKey()"
+                (change)="catKey.set($any($event.target).value)"
+              >
+                @for (category of categories(); track categoryKey(category)) {
+                  <option [value]="categoryKey(category)">
+                    {{ category.label }} ({{ chf(category.amount_chf) }}/Monat)
+                  </option>
+                }
+              </select>
+              <div class="flex items-center gap-1.5">
+                <input
+                  type="range"
+                  class="range range-primary range-xs flex-1"
+                  aria-label="Anpassung in Prozent"
+                  min="-100"
+                  max="100"
+                  step="5"
+                  [value]="catPercent()"
+                  (input)="catPercent.set(+$any($event.target).value)"
+                />
+                <span class="w-14 shrink-0 text-right text-sm tabular-nums">
+                  {{ catPercent() > 0 ? '+' : '' }}{{ catPercent() }} %
+                </span>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-primary"
+                  [disabled]="!catPercent()"
+                  (click)="addCategoryAdjustment()"
+                >
+                  OK
+                </button>
+              </div>
+            </div>
+          }
 
           <p class="border-t border-border pt-3 pb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Neues Abo
@@ -217,6 +327,28 @@
           </div>
         </div>
       }
+    </section>
+
+    <!-- Auffälligkeiten als Kategorie-Chips; die Details öffnen sich
+         zentriert im Overlay -->
+    <section>
+      <h2 class="px-1 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        Auffälligkeiten
+      </h2>
+      <div class="flex flex-wrap gap-1.5">
+        @for (group of alertGroups(); track group.label) {
+          <button
+            type="button"
+            class="flex items-center gap-1.5 rounded-full bg-surface px-3 py-1.5 text-sm text-muted-foreground hover:bg-primary hover:text-pf-teal"
+            (click)="openGroup.set(group)"
+          >
+            <span class="size-2 rounded-full" [class]="dotClass(group.severity)" aria-hidden="true"></span>
+            {{ group.label }} ({{ group.alerts.length }})
+          </button>
+        } @empty {
+          <p class="px-1 text-xs text-muted-foreground">Keine Auffälligkeiten.</p>
+        }
+      </div>
     </section>
 
     @if (forecast.isLoading()) {

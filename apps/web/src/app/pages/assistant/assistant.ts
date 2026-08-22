@@ -7,8 +7,11 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
 import { Assistant, HORIZONS, type Horizon, type Status } from '../../core/assistant';
+import type { AdjustmentPayload } from '../../core/forecast';
+import { Handoff } from '../../core/handoff';
 import { AssistantChart } from './assistant-chart';
 
 const STATUS_BADGES: Record<Status, { label: string; classes: string }> = {
@@ -22,18 +25,27 @@ const STATUS_BADGES: Record<Status, { label: string; classes: string }> = {
 const CHF = new Intl.NumberFormat('de-CH', { style: 'currency', currency: 'CHF', maximumFractionDigits: 0 });
 
 @Component({
-  imports: [AssistantChart],
+  imports: [AssistantChart, RouterLink],
   selector: 'app-assistant',
   templateUrl: './assistant.html',
 })
 export class AssistantPage {
   protected readonly assistant = inject(Assistant);
+  private readonly handoff = inject(Handoff);
+  private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
   protected readonly horizons = HORIZONS;
   protected readonly draft = signal('');
 
   private readonly transcript = viewChild.required<ElementRef<HTMLElement>>('transcript');
 
   constructor() {
+    // Prefilled question from Prognose/Kategorien (Handoff) or a shared
+    // ?q= deep link - it lands in the input and is NOT auto-submitted
+    // (Sollstatus: the user always fires the question themselves).
+    const prefill = this.handoff.takeQuestion() ?? this.route.snapshot.queryParamMap.get('q');
+    if (prefill) this.draft.set(prefill);
+
     effect(() => {
       this.assistant.horizon();
       void this.assistant.loadSuggestions();
@@ -71,5 +83,57 @@ export class AssistantPage {
   protected send(message = this.draft()): void {
     this.draft.set('');
     void this.assistant.ask(message);
+  }
+
+  /** what_if answers carry their resolved intervention - hand it to the
+      Prognose as an active scenario chip. */
+  protected adoptScenario(intervention: AdjustmentPayload): void {
+    this.handoff.sendAdjustment({
+      id: this.interventionId(intervention),
+      label: this.interventionLabel(intervention),
+      payload: intervention,
+    });
+    void this.router.navigate(['/']);
+  }
+
+  private interventionId(payload: AdjustmentPayload): string {
+    switch (payload.type) {
+      case 'adjust_category':
+        return `category:${payload.category_main}//${payload.category_sub ?? ''}`;
+      case 'cancel_recurring':
+        return `cancel:${payload.recurring_id}`;
+      case 'adjust_recurring':
+        return `raise:${payload.recurring_id}`;
+      case 'add_recurring':
+        return `add:${payload.label}`;
+      case 'one_off':
+        return `oneoff:${payload.label}`;
+    }
+  }
+
+  private interventionLabel(payload: AdjustmentPayload): string {
+    switch (payload.type) {
+      case 'adjust_category': {
+        const name = payload.category_sub ?? payload.category_main;
+        if (payload.percent !== undefined && payload.percent !== null) {
+          return `${name} ${payload.percent > 0 ? '+' : ''}${payload.percent} %`;
+        }
+        return `${name} ${(payload.delta_chf ?? 0) > 0 ? '+' : ''}${payload.delta_chf ?? 0} CHF`;
+      }
+      case 'cancel_recurring':
+        return 'Kündigung aus Future Me';
+      case 'adjust_recurring':
+        return `Anpassung ${payload.delta_chf > 0 ? '+' : ''}${payload.delta_chf} CHF`;
+      case 'add_recurring':
+        return `${payload.label} ${CHF.format(payload.amount_chf)}`;
+      case 'one_off':
+        return `${payload.label} einmalig ${CHF.format(payload.amount_chf)}`;
+    }
+  }
+
+  /** Lever category ("Main // Sub") -> its bubble on /kategorien. */
+  protected leverLink(category: string): Record<string, string> {
+    const [main, sub] = category.split(' // ');
+    return { category: `${main}~${sub ?? ''}` };
   }
 }

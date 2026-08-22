@@ -1,5 +1,7 @@
 import { Component, computed, inject, signal } from '@angular/core';
+import { Router, RouterLink } from '@angular/router';
 
+import { Alerts, alertMonthOf, alertSentence, type AlertDto } from '../../core/alerts';
 import { chf } from '../../core/chart-theme';
 import {
   Forecast,
@@ -9,20 +11,117 @@ import {
   type Interval,
   type RecurringPayment,
 } from '../../core/forecast';
+import { Graph } from '../../core/graph';
+import { Handoff } from '../../core/handoff';
 import { RailOutlet } from '../../core/rail';
 import { ForecastChart } from './forecast-chart';
 
 const DATE = new Intl.DateTimeFormat('de-CH', { day: 'numeric', month: 'long' });
 
+/** YYYY-MM arithmetic for the alert window. */
+function monthsBack(month: string, count: number): string {
+  const [year, monthNumber] = month.split('-').map(Number);
+  const index = year * 12 + (monthNumber - 1) - count;
+  return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, '0')}`;
+}
+
+/** One rail chip: a category and its alerts. `severity` is the worst
+    one - the source window is already sorted worst-first. */
+interface AlertGroup {
+  label: string;
+  severity: AlertDto['severity'];
+  alerts: AlertDto[];
+}
+
 @Component({
-  imports: [ForecastChart, RailOutlet],
+  imports: [ForecastChart, RailOutlet, RouterLink],
   selector: 'app-forecast',
   templateUrl: './forecast.html',
+  // Document-level: the chip that opens the overlay sits in the rail
+  // (rendered by the layout), so a local escape handler would never see
+  // the key while focus is still out there.
+  host: { '(document:keydown.escape)': 'openGroup.set(null)' },
 })
 export class ForecastPage {
   protected readonly forecast = inject(Forecast);
+  protected readonly graph = inject(Graph);
+  private readonly alerts = inject(Alerts);
+  private readonly handoff = inject(Handoff);
+  private readonly router = inject(Router);
   protected readonly horizons = HORIZONS;
+
+  constructor() {
+    // Handed over from /kategorien ("In Prognose simulieren") or
+    // /future-me ("Als Szenario übernehmen") - consume-once, so a later
+    // plain visit starts clean.
+    const pending = this.handoff.takeAdjustment();
+    if (pending) this.forecast.add(pending);
+  }
+
+  /** Active scenario -> a prefilled what-if question on /future-me. */
+  protected askFutureMe(): void {
+    const labels = this.forecast
+      .adjustments()
+      .map((adjustment) => adjustment.label)
+      .join(' und ');
+    if (!labels) return;
+    this.handoff.sendQuestion(`Was wäre, wenn ich Folgendes umsetze: ${labels}?`);
+    void this.router.navigate(['/future-me']);
+  }
   protected readonly chf = chf;
+  protected readonly alertSentence = alertSentence;
+
+  /** Alerts of the last three data months - shown where the money story
+      is told, each row deep-linking to its bubble on /kategorien. */
+  private readonly recentWindow = computed(() => {
+    const asOf = this.forecast.baseline()?.as_of;
+    return asOf ? this.alerts.recent(monthsBack(asOf.slice(0, 7), 2)) : [];
+  });
+
+  /** Alerts grouped per category for the rail chips - the details live
+      in the overlay a chip opens. */
+  protected readonly alertGroups = computed<AlertGroup[]>(() => {
+    const groups = new Map<string, AlertGroup>();
+    for (const alert of this.recentWindow()) {
+      const label = alert.category_sub ?? alert.category_main ?? alert.merchant ?? 'Sonstiges';
+      const group = groups.get(label) ?? { label, severity: alert.severity, alerts: [] };
+      group.alerts.push(alert);
+      groups.set(label, group);
+    }
+    return [...groups.values()];
+  });
+
+  /** The category group currently shown in the centered overlay. */
+  protected readonly openGroup = signal<AlertGroup | null>(null);
+
+  /** A tight date with a concurrent category spike names its driver. */
+  protected readonly spikeDriver = computed(() => {
+    const asOf = this.forecast.baseline()?.as_of;
+    if (!asOf || !this.forecast.current()?.tight_date) return null;
+    return (
+      this.alerts.forMonth(asOf.slice(0, 7)).find((alert) => alert.type === 'category_spike') ??
+      null
+    );
+  });
+
+  /** Query params for /kategorien: the alert's own bubble. */
+  protected alertLink(alert: AlertDto): Record<string, string> {
+    const params: Record<string, string> = {};
+    const month = alertMonthOf(alert);
+    if (month) params['month'] = month;
+    if (alert.type === 'category_spike') {
+      params['category'] = `${alert.category_main ?? ''}~${alert.category_sub ?? ''}`;
+    } else if (alert.transaction_id) {
+      params['tx'] = alert.transaction_id;
+    }
+    return params;
+  }
+
+  protected dotClass(severity: AlertDto['severity']): string {
+    if (severity === 'danger') return 'bg-danger';
+    if (severity === 'warning') return 'bg-warning';
+    return 'bg-ring';
+  }
 
   protected readonly newLabel = signal('Fitnessabo');
   protected readonly newAmount = signal(89);
@@ -30,21 +129,45 @@ export class ForecastPage {
   /** The "+" popover holding the free-form inputs. */
   protected readonly menuOpen = signal(false);
 
+  /** Selected category for the adjust_category form, keyed main//sub. */
+  protected readonly catKey = signal('');
+  protected readonly catPercent = signal(-50);
+
+  /** Expense categories from the graph cache, largest first. */
+  protected readonly categories = computed(() => this.graph.expenseCategories());
+
+  protected categoryKey(category: { main: string; sub: string | null }): string {
+    return `${category.main}//${category.sub ?? ''}`;
+  }
+
+  protected addCategoryAdjustment(): void {
+    const category =
+      this.categories().find((c) => this.categoryKey(c) === this.catKey()) ?? this.categories()[0];
+    const percent = this.catPercent();
+    if (!category || !percent) return;
+    this.forecast.add({
+      id: `category:${this.categoryKey(category)}`,
+      label: `${category.label} ${percent > 0 ? '+' : ''}${percent} %`,
+      payload: {
+        type: 'adjust_category',
+        category_main: category.main,
+        category_sub: category.sub,
+        percent,
+      },
+    });
+    this.menuOpen.set(false);
+  }
+
   /**
-   * Presets built from the actual data rather than hard-coded merchants:
-   * "Miete +200" only exists if this account has a rent payment. The two
-   * largest monthly expenses stand in for the issue's rent and Netflix.
+   * Presets built entirely from the actual data, nothing hard-coded:
+   * the two largest monthly recurring expenses (raise/cancel), the
+   * largest variable category, and - when the alert service found a
+   * category spike - that spike's category. Each account gets its own
+   * set; an account without a spike simply has one preset fewer.
    */
   private readonly allPresets = computed<Adjustment[]>(() => {
     const [first, second] = this.forecast.topMonthly();
     const presets: Adjustment[] = [];
-    if (first) {
-      presets.push({
-        id: `raise:${first.recurring_id}`,
-        label: `${this.name(first)} +200`,
-        payload: { type: 'adjust_recurring', recurring_id: first.recurring_id, delta_chf: 200 },
-      });
-    }
     const cancellable = second ?? first;
     if (cancellable) {
       presets.push({
@@ -53,17 +176,30 @@ export class ForecastPage {
         payload: { type: 'cancel_recurring', recurring_id: cancellable.recurring_id },
       });
     }
-    presets.push({
-      id: 'add:Fitnessabo',
-      label: 'Fitnessabo CHF 89',
-      payload: {
-        type: 'add_recurring',
-        label: 'Fitnessabo',
-        amount_chf: 89,
-        interval: 'monthly',
-        start_date: this.forecast.baseline()?.as_of ?? new Date().toISOString().slice(0, 10),
-      },
+
+    const categoryPreset = (
+      main: string,
+      sub: string | null,
+      label: string,
+    ): Adjustment => ({
+      id: `category:${main}//${sub ?? ''}`,
+      label: `${label} −50 %`,
+      payload: { type: 'adjust_category', category_main: main, category_sub: sub, percent: -50 },
     });
+    const topCategory = this.categories()[0];
+    if (topCategory) {
+      presets.push(categoryPreset(topCategory.main, topCategory.sub, topCategory.label));
+    }
+    // A spiking category is the intervention the data itself suggests.
+    const spike = this.recentWindow().find((alert) => alert.type === 'category_spike');
+    if (spike?.category_main) {
+      const preset = categoryPreset(
+        spike.category_main,
+        spike.category_sub,
+        spike.category_sub ?? spike.category_main,
+      );
+      if (!presets.some((existing) => existing.id === preset.id)) presets.push(preset);
+    }
     return presets;
   });
 
@@ -71,13 +207,6 @@ export class ForecastPage {
   protected readonly presets = computed(() => {
     const taken = new Set(this.forecast.adjustments().map((adjustment) => adjustment.id));
     return this.allPresets().filter((preset) => !taken.has(preset.id));
-  });
-
-  /** The full list runs to dozens of merchants - name a few, count the rest. */
-  protected readonly outliers = computed(() => {
-    const names = this.forecast.current()?.assumptions.excluded_outliers ?? [];
-    const shown = names.slice(0, 3).join(', ');
-    return names.length > 3 ? `${shown} und ${names.length - 3} weitere` : shown;
   });
 
   /** Already-cancelled subscriptions drop out of the picker. */

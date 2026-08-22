@@ -36,7 +36,15 @@ from app.schemas.assistant import (
     AssumptionsUsed,
     Lever,
 )
-from app.schemas.forecast import AddRecurring, Adjustment, AdjustRecurring, CancelRecurring, OneOff, SeriesPoint
+from app.schemas.forecast import (
+    AddRecurring,
+    AdjustCategory,
+    AdjustRecurring,
+    Adjustment,
+    CancelRecurring,
+    OneOff,
+    SeriesPoint,
+)
 from app.services.classification import Classification
 from app.services.forecast_service import (
     DAYS_PER_MONTH,
@@ -62,6 +70,10 @@ class AnswerResult(NamedTuple):
     """Only set for `what_if` - the baseline is what `affordability`/
     `time_to_goal` chart directly, `what_if` charts baseline vs scenario
     (T6)."""
+    intervention: Adjustment | None = None
+    """Only set for `what_if`: the resolved adjustment, echoed to the
+    frontend so "Als Szenario in Prognose übernehmen" can hand the exact
+    same intervention to `POST /Simulate`."""
 
 
 class UnresolvedAdjustmentError(Exception):
@@ -325,13 +337,25 @@ def first_crossing(series: list[SeriesPoint], target_chf: float, attr: Literal["
 
 
 def resolve_adjustment(
-    extracted: ExtractedIntent, recurring_payments: list[RecurringPayment], as_of: date
+    extracted: ExtractedIntent,
+    recurring_payments: list[RecurringPayment],
+    as_of: date,
+    classifications: list[Classification] | None = None,
 ) -> Adjustment | None:
     """Turns T3's raw `adjustment_kind`/`merchant_hint`/amounts into a
     real Feature-4 `Adjustment` - `None` if `cancel`/`adjust` can't be
     matched against real data (the T3->T5 handoff gap noted in
     ASSISTANT_STATUS.md). Callers must treat `None` as unsupported, not
     crash."""
+    if extracted.category_percent_hint and extracted.category_hint:
+        match = _match_category(extracted.category_hint, classifications or [])
+        if match is None:
+            return None
+        main, sub = match
+        # "halbieren" without an extracted number defaults to -50 - the
+        # most common phrasing of the category question.
+        return AdjustCategory(category_main=main, category_sub=sub, percent=extracted.percent or -50)
+
     kind = extracted.adjustment_kind
     if kind in ("cancel", "adjust"):
         rp = _match_merchant(extracted.merchant_hint, recurring_payments)
@@ -351,6 +375,28 @@ def resolve_adjustment(
         # T3 doesn't extract a date either - "as_of" (now) is the most
         # natural reading of "was wäre, wenn ich einmalig X ausgebe".
         return OneOff(label=extracted.merchant_hint or extracted.target_label or "Einmalige Ausgabe", amount_chf=amount, date=as_of)
+    return None
+
+
+def _match_category(hint: str, classifications: list[Classification]) -> tuple[str, str | None] | None:
+    """Matches a free-text category hint ("Essen", "Gastronomie") against
+    the variable (Topf-2) categories in the data. A sub-category match is
+    the more specific one and wins; a main-category match adjusts every
+    sub beneath it (`sub=None`). Deterministic tie-break: shortest name."""
+    needle = hint.strip().lower()
+    if not needle:
+        return None
+    pairs = {
+        (c.transaction.category_main, c.transaction.category_sub)
+        for c in classifications
+        if c.topf == "variable" and c.transaction.category_main
+    }
+    sub_matches = [(main, sub) for main, sub in pairs if sub and needle in sub.lower()]
+    if sub_matches:
+        return min(sub_matches, key=lambda pair: len(pair[1] or ""))
+    main_matches = {main for main, _ in pairs if needle in main.lower()}
+    if main_matches:
+        return (min(main_matches, key=len), None)
     return None
 
 
@@ -411,7 +457,7 @@ def answer_what_if(
     resolved against real data - callers (T7) must catch this and treat
     it as `status="unsupported"`.
     """
-    adjustment = resolve_adjustment(extracted, recurring_payments, as_of)
+    adjustment = resolve_adjustment(extracted, recurring_payments, as_of, classifications)
     if adjustment is None:
         raise UnresolvedAdjustmentError("Konnte den genannten Posten nicht in den Daten finden.")
 
@@ -473,6 +519,18 @@ def answer_what_if(
             # baseline is the correct (and only sensible) basis here.
             scenario_series = _shift_series(baseline_lt.series, -adjustment.amount_chf)
             lt = baseline_lt
+        elif isinstance(adjustment, AdjustCategory):
+            # Category adjustments act on the variable baseline, not the
+            # recurring payments - project_long_term scales it directly.
+            # `lt` becomes the scenario projection, so the downstream
+            # health check runs on the adjusted burn rate.
+            lt = project_long_term(
+                transactions, recurring_payments, classifications, balance_repo,
+                months=months, as_of=as_of,
+                salary_growth_pct=salary_growth_pct, inflation_pct=inflation_pct, savings_rate_pct=savings_rate_pct,
+                category_adjustments=[adjustment],
+            )
+            scenario_series = lt.series
         else:
             overrides = apply_adjustments(recurring_payments, [adjustment])
             lt = project_long_term(
@@ -513,4 +571,5 @@ def answer_what_if(
     return AnswerResult(
         status=status, facts=facts, levers=levers, assumptions_used=assumptions_used,
         baseline_series=baseline_series, scenario_series=scenario_series,
+        intervention=adjustment,
     )

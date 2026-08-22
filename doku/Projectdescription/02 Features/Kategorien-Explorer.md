@@ -1,6 +1,6 @@
 ---
 tags: [feature]
-status: in-arbeit
+status: umgesetzt
 issue: 3
 ---
 
@@ -8,8 +8,8 @@ issue: 3
 
 Spec: [[Issue 3 – Kategorien-Explorer]] · Referenz-Visualisierung: [data-to-viz.com/graph/circularpacking](https://www.data-to-viz.com/graph/circularpacking.html)
 
-> [!note] Soll-Änderungen (22.08.2026, [[Sollstatus]])
-> Ist die **zweite Hauptseite** und ersetzt die Overview/Dashboard-Seite — die erste Version liegt seit PR #13 auf `/`, laut Sollstatus zieht sie auf `/kategorien` (Prognose wird Start). API-Entscheid gefallen: die **REST-Variante** (`/api/v1/graph`), die OData-Graph-Routen werden entfernt. Die Anomalie-Ringe (Alert-Integration) sind **Pflicht statt nice-to-have**; Detailpanel bekommt "In Prognose simulieren" und "Future Me fragen".
+> [!note] Soll-Änderungen (22.08.2026, [[Sollstatus]]) — **alle umgesetzt**
+> Ist die **zweite Hauptseite** und ersetzt die Overview/Dashboard-Seite — sie liegt jetzt auf **`/kategorien`** (Prognose ist Start). API-Entscheid vollzogen: nur noch die **REST-Variante** (`/api/v1/graph`), die OData-Graph-Routen sind entfernt. Die Anomalie-Ringe (Alert-Integration) waren **Pflicht statt nice-to-have** und sind drin; das Detailpanel hat "In Prognose simulieren" und "Future Me fragen".
 
 ## Die Idee
 
@@ -25,15 +25,17 @@ Die Transaktionsliste wird durch eine hierarchische **Circle-Packing-Visualisier
 
 ## API (umgesetzt)
 
-Es existieren **zwei parallele Varianten** über demselben `graph_service`:
+**REST, wie im Issue:** `GET /api/v1/graph?month=YYYY-MM&mode=absolute|delta&flow=expense|income|both` liefert den kompletten Baum mit Inline-Transaktionsobjekten an den Blättern (kein Nachladen); `GET /api/v1/graph/months` die Slider-Monate.
 
-- **REST, wie im Issue:** `GET /api/v1/graph?month=YYYY-MM&mode=absolute|delta&flow=expense|income|both` liefert den kompletten Baum mit Inline-Transaktionsobjekten an den Blättern (kein Nachladen); `GET /api/v1/graph/months` die Slider-Monate.
-- **OData:** `GET /api/v1/GraphNodes` (flache, filterbare Knotenliste für Drilldown, mit `include_transactions`/`max_level` und vollen Query-Optionen) und `GET /api/v1/GraphMonths`.
-
-Sobald das Frontend gebaut wird, sollte das Team sich für **eine** Variante entscheiden und die andere entfernen.
+Die zeitweise parallel existierende OData-Variante (`GraphNodes`/`GraphMonths`, `graph_odata.py`) wurde am 22.08. **entfernt** (Routen + CSDL-Einträge) — der Explorer nutzt die REST-Variante, der Entscheid war damit gefallen.
 
 ## Status
 
-**Backend umgesetzt, auf `main` (PR #10):** `app/services/graph_service.py`, `app/schemas/graph.py`, `app/api/routes/graph.py`, `app/api/routes/graph_odata.py` sowie die im Issue geforderte Merchant-Alias-Normalisierung (`app/services/merchant_normalization.py`).
+**Backend umgesetzt, auf `main` (PR #10, konsolidiert am 22.08.):** `app/services/graph_service.py`, `app/schemas/graph.py`, `app/api/routes/graph.py` sowie die im Issue geforderte Merchant-Alias-Normalisierung (`app/services/merchant_normalization.py`).
 
-**Frontend: erste Version auf `main` (PR #13):** `pages/explorer/` + `core/graph.ts` (`d3-hierarchy`) auf Route `/` — Monats-Slider mit Client-Cache (ein `flow=both&mode=delta`-Request pro Monat deckt alle Toggle-Kombinationen), Ausgaben/Einnahmen/Beides, Absolut⇄Delta, Zoom/Fokus, Detailpanel mit Transaktionstabelle, Summary-Balken ab 15 Kindern. Noch offen: Alert-Ringe und die Verbindungs-Buttons aus dem [[Sollstatus]].
+**Frontend umgesetzt, auf `main` (PR #13 + Ausbau am 22.08.):** `pages/explorer/` + `core/graph.ts` (`d3-hierarchy`), jetzt auf Route **`/kategorien`** — Monats-Slider mit Client-Cache (ein `flow=both&mode=delta`-Request pro Monat deckt alle Toggle-Kombinationen), Ausgaben/Einnahmen/Beides, Absolut⇄Delta, Zoom/Fokus, Detailpanel mit Transaktionstabelle, Summary-Balken ab 15 Kindern. Der Slider scrubbt inzwischen **kontinuierlich mit Morph-Übergang** zwischen den Monaten.
+
+Neu seit dem 22.08. ([[Sollstatus]]-Ausbau):
+
+- **Alert-Ringe** (via `core/alerts.ts`, client-seitiger Join — siehe [[Alerts]]): Severity-Ringe um betroffene Kreise (danger/warning/info), während des Scrubbens ausgeblendet; Filter-Chip **"Nur Auffälligkeiten"** mit Zähler, dimmt nicht betroffene Kreise ohne Re-Packing; "Warum sehe ich das?"-Sätze im Rail und im Detailpanel. Deep-Links von der Prognose landen per Query-Param (`?month=…&tx=…` bzw. `?month=…&category=Main~Sub`) auf der passenden Blase.
+- **Verbindungs-Buttons** im Detail-Rail ("Weiterdenken"): **"In Prognose simulieren"** (Merchant mit aktivem Abo → `cancel_recurring`, sonst `adjust_category` −50 %) und **"Future Me fragen"** (vorbefüllte `what_if`-Frage, wird nicht automatisch abgeschickt) — Übergabe über den consume-once Signal-Store `core/handoff.ts`.

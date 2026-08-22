@@ -1,6 +1,6 @@
 ---
 tags: [feature]
-status: offen
+status: umgesetzt
 issue: 8
 ---
 
@@ -8,8 +8,8 @@ issue: 8
 
 Spec: [[Issue 8 – Alerts]] · baut auf der Klassifikation aus [[Issue 4 – Zukunftsprognose]] auf (`outlier`-Topf, `monthly_category_stats`, `group_key`)
 
-> [!important] Soll-Änderung (22.08.2026, [[Sollstatus]]): keine eigene Seite
-> Die drei Alert-Typen, Schwellen, Guards und das Backend-Schema unten bleiben unverändert gültig. **Gestrichen ist nur die eigene Frontend-Seite** (Route `/alerts`, KPI-Kacheln, Kartenliste): Alerts erscheinen stattdessen dort, wo die Daten sichtbar sind — als Severity-Ringe/Badges an Knoten im [[Kategorien-Explorer]] (inkl. Filter "Nur Auffälligkeiten" und "Warum sehe ich das?"-Satz im Detailpanel) und als Warn-Marker an `known_payments` in der Prognose. Der Abschnitt "Frontend-Seite" unten ist damit überholt.
+> [!important] Soll-Änderung (22.08.2026, [[Sollstatus]]): keine eigene Seite — **so umgesetzt**
+> Die drei Alert-Typen, Guards und das Backend-Schema unten bleiben gültig (die **Schwellen wurden bei der Umsetzung rekalibriert**, siehe Tabelle). **Gestrichen ist nur die eigene Frontend-Seite** (Route `/alerts`, KPI-Kacheln, Kartenliste): Alerts erscheinen dort, wo die Daten sichtbar sind — als Severity-Ringe/Badges an Knoten im [[Kategorien-Explorer]] (inkl. Filter "Nur Auffälligkeiten" und "Warum sehe ich das?"-Satz im Detailpanel) und als Auffälligkeiten-Liste/Warn-Marker in der Prognose. Der Abschnitt "Frontend-Seite" unten ist damit überholt.
 
 ## Die Idee
 
@@ -22,10 +22,10 @@ Leitsatz wie beim [[Abo-Radar]]: **Fehlalarme kosten Vertrauen.** Alle Schwellen
 | Typ | Severity | Regel |
 |---|---|---|
 | `duplicate_charge` | danger | Gleicher Händler, gleicher Betrag, gleicher Tag, ≥ 2 Buchungen, Betrag ≥ CHF 20. Läuft auf den rohen, **nicht** same-day-kollabierten Transaktionen; Händler-Kanonisierung via bestehendem `group_key` aus `recurring_detection.py`. Byte-identische CSV-Zeilen zählen bewusst mit — der Export ist nicht dedupliziert, und «ist das zweimal abgebucht?» ist genau die Frage, die der Alert dem User stellt. |
-| `large_payment` | warning | Wiederverwendung der Outlier-Klassifikation (`classification.py`: > 3× Kategorie-Median **und** ≥ CHF 100), zusätzlich absoluter Floor CHF 100 auch für den Selten-Kategorie-Zweig — ein CHF-12-Kauf in einer seltenen Kategorie darf nicht alerten. `baseline_chf` = Kategorie-Median. |
-| `category_spike` | info | Monatssumme einer Kategorie ≥ 2.0× des 6-Monats-Medians **und** Delta ≥ CHF 150. Nur über `topf == "variable"`-Buchungen: Fixkosten ausgeschlossen (keine Miet-«Spikes»), Outlier ausgeschlossen (eine grosse Zahlung wird nicht doppelt geflaggt als Typ 2 *und* Typ 3). Baseline via bestehendem `monthly_category_stats`, mindestens 3 Monate Historie. Der aktuelle Teilmonat wird mit derselben Regel mitgeprüft — er kann nur unter-triggern, nie falsch alarmieren. |
+| `large_payment` | warning | Wiederverwendung der Outlier-Klassifikation (`classification.py`), zusätzlich absoluter Floor **CHF 200** (rekalibriert; Spec sagte 100) auch für den Selten-Kategorie-Zweig — ein CHF-12-Kauf in einer seltenen Kategorie darf nicht alerten. `baseline_chf` = Kategorie-Median. |
+| `category_spike` | info | Monatssumme einer Kategorie ≥ **2.5×** des 6-Monats-Medians **und** Delta ≥ **CHF 250** (rekalibriert; Spec sagte 2.0× / 150). Nur über `topf == "variable"`-Buchungen: Fixkosten ausgeschlossen (keine Miet-«Spikes»), Outlier ausgeschlossen (eine grosse Zahlung wird nicht doppelt geflaggt als Typ 2 *und* Typ 3). Baseline via bestehendem `monthly_category_stats`, mindestens **4 Monate** Historie (Spec: 3). Der aktuelle Teilmonat wird mit derselben Regel mitgeprüft — er kann nur unter-triggern, nie falsch alarmieren. |
 
-**Gemeinsame Guards:** nur `flow == "expense"` (Einkommen alertet nie); interne Umbuchungen per Kategorie ausgeschlossen (`Sonstige Geldtransfers`, `Überträge` — `is_transfer` ist unimplementiert, die Kategorie ist der Proxy). Schwellen als env-überschreibbare Konstanten im Stil der `OUTLIER_*`-Werte: `ALERT_DUPLICATE_MIN_CHF=20`, `ALERT_SPIKE_MULTIPLIER=2.0`, `ALERT_SPIKE_MIN_DELTA_CHF=150`, `ALERT_SPIKE_MIN_MONTHS=3`.
+**Gemeinsame Guards:** nur `flow == "expense"` (Einkommen alertet nie); interne Umbuchungen per Kategorie ausgeschlossen (`Sonstige Geldtransfers`, `Überträge` — `is_transfer` ist unimplementiert, die Kategorie ist der Proxy). Schwellen als env-überschreibbare Konstanten in `app/core/config.py`, im ausgelieferten Stand (PR #15, gegen die echten Daten kalibriert — teils strenger als die Spec): `ALERT_DUPLICATE_MIN_CHF=20`, `ALERT_LARGE_PAYMENT_MIN_CHF=200`, `ALERT_SPIKE_MULTIPLIER=2.5`, `ALERT_SPIKE_MIN_DELTA_CHF=250`, `ALERT_SPIKE_MIN_MONTHS=4`, dazu `ALERT_LOOKBACK_MONTHS=12` (Lookback-Fenster; `0` deaktiviert den Filter).
 
 ## API
 
@@ -44,10 +44,14 @@ category_main / category_sub
 amount_chf     positiver Betrag (Duplikat: Einzelbuchung; Spike: Monatssumme)
 baseline_chf   Kategorie-Median (large) bzw. Monats-Median (spike)
 count          Gruppengrösse bei Duplikaten
-booking_text   erster Avisierungstext — Transaktionen haben keine IDs, das ist die Referenz
+booking_text   erster Avisierungstext
+transaction_id / transaction_ids   über die Spec hinaus: primäre Transaction.id ("tx-*")
+               bzw. alle betroffenen IDs — Grundlage der Deep-Links ins Frontend
 ```
 
-## Frontend-Seite
+**Verknüpfung mit dem Graphen — client-seitiger Join:** Die Graph-Response trägt bewusst **kein** `alert_ids`-Feld; das Frontend (`core/alerts.ts`) holt `/api/v1/Alerts` einmal und joint selbst — die "einfachster Start"-Option aus dem [[Sollstatus]]. Transaktions-Blätter matchen per ID (`tx-*`), Merchants aggregieren die Alerts ihrer Transaktionen, Kategorie-Knoten tragen den `category_spike` des Monats (Match über die Kategorie-Felder).
+
+## Frontend-Seite *(überholt — siehe Callout oben, nicht gebaut)*
 
 Route `/alerts`, Titel und Nav-Label **«Auffälligkeiten»** — weniger alarmistisch als «Warnungen» (Typ 3 ist info-Grad, kein Alarm) und passt zur Domänensprache («Ausreisser»).
 
@@ -61,4 +65,9 @@ Service `core/alerts.ts` mit `httpResource`, nach dem Muster von `core/forecast.
 
 ## Status
 
-Noch nicht begonnen — dieses Dokument ist die Definition. Geplante Umsetzung auf einem Branch ab `main`; die Frontend-Infrastruktur (HttpClient-Provider, `proxy.conf.json`, danger/warning-Tokens) wird von `feature/prognosis` portiert. Details und offene Fragen: [[Issue 8 – Alerts]].
+**Umgesetzt.** Backend in **PR #15** auf `main` (`app/services/alert_service.py`, `app/schemas/alert.py`, `GET /api/v1/Alerts`; getestet in `tests/test_alert_service.py` + `tests/test_alerts_route.py`). Frontend am 22.08. integriert — statt eigener Seite:
+
+- **[[Kategorien-Explorer]]** (`/kategorien`): Severity-Ringe um betroffene Kreise (danger = rot, warning = amber, info = gestrichelter Teal-Ring), während des Slider-Scrubbens ausgeblendet (ein Alert gehört zu einem Monat); Filter-Chip **"Nur Auffälligkeiten"** mit Zähler, der nicht betroffene Kreise dimmt (kein Re-Packing — das Layout bleibt stabil); "Warum sehe ich das?"-Sätze im Rail des fokussierten Knotens und im Transaktions-Detailpanel.
+- **Prognose** (`/`): **"Auffälligkeiten"-Liste** (letzte 3 Datenmonate, schwerste Severity zuerst, max. 6) — jede Zeile deep-linkt auf die passende Blase in `/kategorien`; in der Fixkosten-Liste tragen Zeilen mit aktuellem `large_payment`-Alert einen Warn-Punkt; ein `tight_date` mit gleichzeitigem `category_spike` zeigt einen "Treiber ansehen"-Link zur Spike-Kategorie.
+
+Basis dafür ist `core/alerts.ts` mit dem oben beschriebenen client-seitigen Join. Historie und Schwellen-Diskussion: [[Issue 8 – Alerts]].

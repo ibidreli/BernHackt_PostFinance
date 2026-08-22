@@ -1,7 +1,7 @@
 :host {
   display: block;
-  /* Set by the component: 750ms while zooming, 500ms on a month change. */
-  --transition-ms: 600ms;
+  /* Set by the component: 300ms while zooming, 500ms on a month change. */
+  --transition-ms: 500ms;
 }
 
 .node {
@@ -31,8 +31,10 @@ circle:hover {
   stroke-width: 2.5;
 }
 
+/* Neutral, not --color-ring: the accent is PF-yellow in dark mode, and
+   a yellow outline reads as a warning marker on a data circle. */
 circle.selected {
-  stroke: var(--color-ring);
+  stroke: var(--color-foreground);
   stroke-width: 3;
 }
 
@@ -69,6 +71,6 @@ circle:focus {
 
 circle:focus-visible {
   outline: none;
-  stroke: var(--color-ring);
+  stroke: var(--color-foreground);
   stroke-width: 4;
 }

@@ -1,12 +1,12 @@
 ---
 tags: [issue]
-status: offen
+status: umgesetzt
 issue: 8
 ---
 
 # Issue #8 — Alerts (Auffälligkeiten-Radar)
 
-> [!important] Soll-Änderung (22.08.2026, [[Sollstatus]]): keine eigene Seite mehr — Backend-Spec unverändert, die Alerts werden in [[Kategorien-Explorer]] (Ringe/Filter) und Prognose (Marker) integriert; Route `/alerts` entfällt.
+> [!important] Soll-Änderung (22.08.2026, [[Sollstatus]]): keine eigene Seite mehr — **so geliefert**: Backend in PR #15, die Alerts sind in [[Kategorien-Explorer]] (Ringe/Filter) und Prognose (Liste/Marker) integriert; Route `/alerts` entfällt. Die Schwellen wurden gegenüber dieser Spec rekalibriert (siehe Umsetzungsstand).
 
 GitHub-Issue: *noch nicht erstellt* · Labels: `feature`, `frontend`, `backend`, `priority:medium` · Epic: Beyond the List · Abhängigkeit: Klassifikation/`outlier` aus [[Issue 4 – Zukunftsprognose]] wiederverwenden, nicht neu bauen · Feature-Note: [[Alerts]]
 
@@ -20,8 +20,12 @@ API: OData-EntitySet `GET /api/v1/Alerts` (deterministisch, im `lifespan` berech
 
 ## Umsetzungsstand
 
-Noch nicht begonnen. Geplant: Branch ab `main`; die Frontend-Infrastruktur (HttpClient-Provider, `proxy.conf.json` + `angular.json`-Eintrag, `--color-danger`/`--color-warning`-Tokens inkl. WCAG-Kommentaren) wird von `feature/prognosis` portiert, ebenso der Sidebar-Icon-Mechanismus. Backend-seitig werden `classify_transactions`, `monthly_category_stats` und `group_key` wiederverwendet; neu entstehen `app/schemas/alert.py`, `app/services/alert_service.py`, `app/api/routes/alerts.py` plus Erweiterungen in `main.py` und `odata/metadata.py`. Test-Scaffold (`requirements-dev.txt`, `tests/`) muss auf `main` neu aufgebaut werden — inklusive Negativ-Tests pro Alert-Typ.
+**Geliefert** (Stand 22.08.2026) — als Integration, ohne eigene Seite:
+
+- **Backend auf `main` (PR #15):** `app/schemas/alert.py`, `app/services/alert_service.py`, `app/api/routes/alerts.py` plus Erweiterungen in `main.py` und `odata/metadata.py`; wiederverwendet wie geplant `classify_transactions`, `monthly_category_stats`, `group_key`. Das Schema trägt über die Spec hinaus `transaction_id`/`transaction_ids` (Basis der Deep-Links). Tests: `tests/test_alert_service.py` + `tests/test_alerts_route.py` (Teil des neu aufgebauten Test-Scaffolds mit 59 Tests, [[Projektstatus]]).
+- **Rekalibrierte Schwellen** (ausgeliefert in `app/core/config.py`, teils strenger als diese Spec): `ALERT_DUPLICATE_MIN_CHF=20` (wie Spec), `ALERT_LARGE_PAYMENT_MIN_CHF=200` (Spec: 100), `ALERT_SPIKE_MULTIPLIER=2.5` (Spec: 2.0), `ALERT_SPIKE_MIN_DELTA_CHF=250` (Spec: 150), `ALERT_SPIKE_MIN_MONTHS=4` (Spec: 3), neu dazu `ALERT_LOOKBACK_MONTHS=12`.
+- **Frontend-Integration** (statt KPI-Kacheln/Kartenliste): Severity-Ringe, "Nur Auffälligkeiten"-Filter und "Warum sehe ich das?"-Sätze im [[Kategorien-Explorer]]; Auffälligkeiten-Liste mit Deep-Links, Fixkosten-Warn-Punkte und "Treiber ansehen"-Link in der Prognose. Details: [[Alerts]].
 
 ## Offene Fragen
 
-Schwellenkalibrierung gegen die echten Daten (`ALERT_SPIKE_MULTIPLIER` 2.0, Duplikat-Floor CHF 20, Spike-Delta CHF 150 — nach dem ersten Lauf 3–5 Alerts pro Typ von Hand gegen die CSV prüfen); sind die 32 byte-identischen CSV-Zeilengruppen echte Doppelbuchungen oder Exportfehler?; `is_transfer` sauber implementieren statt der Kategorie-Heuristik.
+Schwellenkalibrierung gegen die echten Daten — *erledigt, Ergebnis sind die rekalibrierten Werte oben*; sind die 32 byte-identischen CSV-Zeilengruppen echte Doppelbuchungen oder Exportfehler?; `is_transfer` sauber implementieren statt der Kategorie-Heuristik (weiterhin offen, [[Projektstatus]]).

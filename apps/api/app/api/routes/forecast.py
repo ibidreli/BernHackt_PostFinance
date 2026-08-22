@@ -23,6 +23,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
+from app.models.recurring_payment import RecurringPayment
 from app.odata.envelope import odata_collection, odata_single
 from app.odata.query import ODataFilterError, apply_query_options
 from app.schemas.forecast import ForecastEnvelope, Horizon, SimulateEnvelope, SimulateRequest
@@ -54,6 +55,8 @@ _DEFAULT_SELECT = (
     "recurring_id,merchant,category_main,category_sub,amount_chf,interval,"
     "day_of_month,flow,first_seen,last_seen,is_active"
 )
+# `recurring_id` is computed in `_to_entity`, not a model field.
+_RECURRING_FIELDS = frozenset(RecurringPayment.model_fields) | {"recurring_id"}
 
 
 def _to_entity(rp: Any) -> SimpleNamespace:
@@ -119,9 +122,10 @@ def list_recurring_payments(
             orderby=orderby,
             top=top,
             skip=skip,
+            allowed_fields=_RECURRING_FIELDS,
         )
     except ODataFilterError as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid $filter: {exc}") from exc
+        raise HTTPException(status_code=400, detail=f"Invalid query option: {exc}") from exc
 
     items = [vars(it) if isinstance(it, SimpleNamespace) else it for it in result.items]
     return odata_collection("RecurringPayments", items, count=result.count if count else None)

@@ -106,6 +106,13 @@ def _describe_adjustment(extracted) -> str | None:
     wrong. `None` for non-what_if intents."""
     if extracted.intent != "what_if":
         return None
+    if extracted.category_percent_hint and extracted.category_hint:
+        percent = extracted.percent if extracted.percent is not None else -50
+        direction = "mehr" if percent > 0 else "weniger"
+        return (
+            f'Die Ausgaben-Kategorie "{extracted.category_hint}" wird um '
+            f"{abs(percent):.0f}% {direction} angesetzt."
+        )
     label = extracted.merchant_hint or "diesen Posten"
     kind = extracted.adjustment_kind
     if kind == "cancel":
@@ -328,4 +335,5 @@ def ask(
         assumptions_used=result.assumptions_used,
         clarification=None,
         source=mode,
+        intervention=result.intervention,
     )

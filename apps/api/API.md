@@ -5,7 +5,7 @@ Diese Datei ist die kompakte Referenz für die drei Endpunkte. Für Details zu B
 ## Grundlagen
 
 - **Keine Datenbank.** Die Bank-Export-CSV ist die einzige Datenquelle, beim Start einmal in den Speicher geladen. Kein Persistenz-Layer, keine Migration.
-- **OData v4, pragmatisches Subset.** `OData-Version: 4.0`-Header auf jeder Antwort, `@odata.context`-Envelope, OData-JSON-Error-Format (`{"error": {"code", "message"}}`). Kein `$batch`, keine Atom/XML-Repräsentation. Details: [STATUS_FEATURE_NR_4_BACKEND.md, T9](STATUS_FEATURE_NR_4_BACKEND.md#t9--odata-layer).
+- **OData v4, pragmatisches Subset.** `OData-Version: 4.0`-Header auf den OData-Routen (`/$metadata`, `/Alerts`, `/RecurringPayments`, `/GetForecast`, `/Simulate` — nicht auf `/health`, `/graph*`, `/assistant/*`), `@odata.context`-Envelope, OData-JSON-Error-Format (`{"error": {"code", "message"}}`). Kein `$batch`, keine Atom/XML-Repräsentation. Unbekannte Felder in `$filter`/`$select`/`$orderby` ergeben **400** mit OData-Error (statt stiller `null`-Spalten/leerer Listen). Details: [STATUS_FEATURE_NR_4_BACKEND.md, T9](STATUS_FEATURE_NR_4_BACKEND.md#t9--odata-layer).
 - **Kein Zins, keine Rendite.** `assumptions.interest_applied` ist immer `false`. Die Hochrechnung ist reine Summierung.
 - **Interaktiv testen:** `/docs` (Swagger UI) nach `docker compose up` — siehe [README.md](../../README.md) für Run-Anleitung.
 - **CSDL-Dokument:** `GET /api/v1/$metadata`.
@@ -16,10 +16,10 @@ Diese Datei ist die kompakte Referenz für die drei Endpunkte. Für Details zu B
 |---|---|---|---|
 | `/api/v1/RecurringPayments` | GET | EntitySet | Liste erkannter wiederkehrender Zahlungen, mit vollen Query-Optionen |
 | `/api/v1/Alerts` | GET | EntitySet | Auffaelligkeiten aus Transaktionen: Duplikate, grosse Zahlungen, Kategorie-Spikes |
-| `/api/v1/GraphMonths` | GET | EntitySet-artig mit OData-Query | Verfügbare Monate für den Kategorien-Explorer (max. 12) |
-| `/api/v1/GraphNodes` | GET | EntitySet-artig mit OData-Query | Flache, filterbare Graph-Knoten für Drilldown (Monat/Flow/Kategorie/Merchant) |
 | `/api/v1/GetForecast` | GET | Function | Basisprognose ohne Szenario |
 | `/api/v1/Simulate` | POST | Action | Prognose mit Eingriffen, Baseline + Szenario in einer Antwort |
+
+Der Kategorien-Graph läuft als **REST** unter `GET /api/v1/graph` + `GET /api/v1/graph/months` (kompletter Baum mit Inline-Transaktionen; Consumer ist die Explorer-Seite). Die frühere OData-Variante (`GraphNodes`/`GraphMonths`) wurde entfernt — Routen, CSDL-Eintraege und `flatten_graph_nodes()`.
 
 ---
 
@@ -64,7 +64,7 @@ curl "http://localhost:8000/api/v1/Alerts?\$filter=severity%20eq%20'danger'&\$or
 
 Felder: `alert_id`, `type` (`duplicate_charge` | `large_payment` | `category_spike`), `severity` (`danger` | `warning` | `info`), `date`, `month`, `merchant`, `category_main`, `category_sub`, `amount_chf`, `baseline_chf`, `count`, `booking_text`, `transaction_id`, `transaction_ids`.
 
-`transaction_id` ist die primaere `Transaction.id` (`tx-*`) fuer Deep-Links in den Kategorien-Explorer. Dort kann das Frontend ueber `GraphNodes?include_transactions=true&$filter=tx_id eq 'tx-123'` den passenden Transaktions-Kreis finden. Bei Duplikaten und Kategorie-Spikes stehen alle betroffenen IDs in `transaction_ids`.
+`transaction_id` ist die primaere `Transaction.id` (`tx-*`) fuer Deep-Links in den Kategorien-Explorer; bei Duplikaten und Kategorie-Spikes stehen alle betroffenen IDs in `transaction_ids`. Konsumiert wird der Endpunkt von beiden Frontend-Seiten (Kategorien: Severity-Ringe/Filter; Prognose: Auffaelligkeiten-Liste/Marker) ueber einen einzigen Fetch in `core/alerts.ts`, das die Alerts client-seitig gegen den Graph joint.
 
 Erkennung:
 
@@ -74,49 +74,6 @@ Erkennung:
 - `category_spike`: nur Topf-2/variable Ausgaben; Monatsumme der Kategorie mindestens `ALERT_SPIKE_MULTIPLIER` mal 6-Monats-Median und Delta mindestens `ALERT_SPIKE_MIN_DELTA_CHF`; mindestens `ALERT_SPIKE_MIN_MONTHS` Baseline-Monate. Defaults: 2.5x, CHF 250, 4 Monate.
 
 Alle Alert-Typen ignorieren interne Transfers (`Transaction.is_transfer`) und Einnahmen.
-
----
-
-### `GET /api/v1/GraphMonths`
-
-Liefert die verfügbaren Monate als OData-EntitySet (`month`, `is_default`, `sort_key`), inkl. `$filter`/`$select`/`$orderby`/`$top`/`$skip`/`$count`.
-
-```bash
-curl "http://localhost:8000/api/v1/GraphMonths?\$orderby=sort_key&\$select=month,is_default"
-```
-
----
-
-### `GET /api/v1/GraphNodes`
-
-Flache Knotenliste (statt ein grosser Baum), optimiert für Drilldown per Folge-Request.
-
-Query-Parameter:
-
-- `month=YYYY-MM` (default: letzter verfügbarer Monat)
-- `mode=absolute|delta`
-- `flow=expense|income|both`
-- `include_transactions=true|false` (default `false`, hält Payload klein)
-- `max_level=0..3` (optional, z. B. nur bis Merchant-Ebene)
-
-Zusätzlich volle OData-Query-Optionen (`$filter`, `$select`, `$orderby`, `$top`, `$skip`, `$count`).
-
-**Beispiele**
-
-Alle Kategorie-Knoten eines Monats:
-```bash
-curl "http://localhost:8000/api/v1/GraphNodes?month=2026-08&flow=expense&max_level=1&\$filter=node_type%20eq%20'category'"
-```
-
-Nur Merchants einer Kategorie (Drilldown):
-```bash
-curl "http://localhost:8000/api/v1/GraphNodes?month=2026-08&flow=expense&\$filter=node_type%20eq%20'merchant'%20and%20category_main%20eq%20'Einkaufen'%20and%20category_sub%20eq%20'Supermärkte'&\$orderby=amount_chf%20desc&\$top=20"
-```
-
-Nur Transaktions-Details eines Merchants:
-```bash
-curl "http://localhost:8000/api/v1/GraphNodes?month=2026-08&flow=expense&include_transactions=true&\$filter=node_type%20eq%20'transaction'%20and%20merchant%20eq%20'MIGROS'&\$select=tx_id,tx_date,tx_amount_chf,tx_original_description"
-```
 
 ---
 
@@ -152,7 +109,7 @@ curl -X POST "http://localhost:8000/api/v1/Simulate" \
   }'
 ```
 
-**Die vier Eingriffstypen** (kombinierbar, siehe `type`-Feld als Discriminator):
+**Die fünf Eingriffstypen** (kombinierbar, siehe `type`-Feld als Discriminator):
 
 | `type` | Felder | Preset |
 |---|---|---|
@@ -160,10 +117,11 @@ curl -X POST "http://localhost:8000/api/v1/Simulate" \
 | `adjust_recurring` | `recurring_id`, `delta_chf` | Miete +200 |
 | `add_recurring` | `label`, `amount_chf`, `interval`, `start_date` | — |
 | `one_off` | `label`, `amount_chf`, `date` | — (Feature 3: "Auto für 30'000?") |
+| `adjust_category` | `category_main`, `category_sub?`, genau eines von `percent` (>= -100) oder `delta_chf`, `effective_from?` | "Gastronomie −50 %" |
 
 `amount_chf` ist bei `one_off` immer eine **positive Ausgaben-Magnitude** — kein Vorzeichen-Trick für Einnahmen (gefundener Bug, siehe STATUS_FEATURE_NR_4_BACKEND.md T7).
 
-**"Kantine halbieren" ist bewusst nicht abbildbar** — keiner der vier Typen erlaubt eine Topf-2-Kategorie-Anpassung, das wurde mit dem Team so bestätigt (siehe STATUS_FEATURE_NR_4_BACKEND.md T7).
+**`adjust_category`** skaliert Median/P25/P75 der getroffenen Kategorien in der variablen Baseline (das Band skaliert mit). `category_sub = null` trifft die ganze Hauptkategorie; `delta_chf` wird proportional auf die getroffenen Subkategorien verteilt; `effective_from` knickt die Kurve mitten im Horizont; eine unbekannte Kategorie ist ein stilles No-op (gleiche Philosophie wie eine vertippte `recurring_id`). Der Typ wirkt auch in der Langfrist-Projektion des Assistenten (`project_long_term`, 1y/5y/10y), und `diff.monthly_chf` weist den freiwerdenden Monatsbetrag aus. Damit ist das früher bewusst ausgeschlossene "Kantine halbieren"-Szenario abbildbar — der Team-Entscheid aus Feature 4 (STATUS_FEATURE_NR_4_BACKEND.md T7) wurde mit dem Sollstatus revidiert.
 
 **`diff`-Vorzeichen-Konvention:** durchgehend `scenario - baseline`, **positiv = besser** (mehr Saldo, mehr Puffer-Tage). Das weicht bewusst vom mehrdeutigen Beispiel in der ursprünglichen Issue-JSON ab — Begründung in STATUS_FEATURE_NR_4_BACKEND.md, T7.
 
@@ -211,3 +169,8 @@ Vollständige Liste mit Begründung in [STATUS_FEATURE_NR_4_BACKEND.md](STATUS_F
 Der Future-Me Chatbot (`POST /api/v1/assistant/ask`, `GET /api/v1/assistant/suggestions`)
 ist bewusst **REST statt OData** (folgt dem Issue-Contract wörtlich) und in einer
 eigenen Referenz dokumentiert: [ASSISTANT_API.md](ASSISTANT_API.md).
+
+Neu: `what_if`-Antworten enthalten zusätzlich ein maschinenlesbares Feld **`intervention`**
+mit dem aufgelösten Adjustment (z. B. der `adjust_category`-Eingriff hinter "Was wäre,
+wenn ich Gastronomie halbiere?") — das Frontend nutzt es für die Szenario-Übernahme
+in die Prognose-Seite. Kategorie-Prozent-Fragen sind damit nicht mehr `unsupported`.

@@ -66,18 +66,4 @@
     }
   </nav>
 
-  <div class="border-t border-border px-3 py-3">
-    <button
-      type="button"
-      [attr.aria-label]="collapsed() ? 'Sign out' : null"
-      [attr.title]="collapsed() ? 'Sign out' : null"
-      class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground hover:bg-surface hover:text-foreground"
-      [class.justify-center]="collapsed()"
-    >
-      <svg lucideLogOut aria-hidden="true" class="size-4 shrink-0"></svg>
-      @if (!collapsed()) {
-        <span class="truncate text-sm">Sign out</span>
-      }
-    </button>
-  </div>
 </aside>

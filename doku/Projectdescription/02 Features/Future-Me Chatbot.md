@@ -25,12 +25,18 @@ Nutzer:innen fragen in natürlicher Sprache — *"Kann ich mir in 5 Jahren ein A
 
 ## Offline-Fallback für die Live-Demo
 
-`ASSISTANT_MODE=cached` beantwortet 5 vorbereitete Demo-Fragen ohne jeden externen API-Call — der [[Forecast-Service]] rechnet dabei **trotzdem echt**, nur die Formulierung kommt aus einem Template. Es wird nichts vorgetäuscht.
+`ASSISTANT_MODE=cached` beantwortet vorbereitete Demo-Fragen ohne jeden externen API-Call — der [[Forecast-Service]] rechnet dabei **trotzdem echt**, nur die Formulierung kommt aus einem Template. Es wird nichts vorgetäuscht. Neu seit dem 22.08. dabei: *"Was wäre, wenn ich Gastronomie halbiere?"* (läuft ohne Key und ist als Vorschlags-Chip im `present`-Horizont gelistet).
 
 ## Status
 
 **Backend fertig und auf `main` gemergt** (PR #12), live gegen die echte OpenAI-API und die echten Sample-Daten getestet (`apps/api/STATUS_FEATURE_NR_5_BACKEND.md`). Endpunkte: `POST /api/v1/assistant/ask`, `GET /api/v1/assistant/suggestions` (REST, nicht OData — folgt dem Issue-Contract wörtlich; Referenz: `apps/api/ASSISTANT_API.md`).
 
-Es gab zwischenzeitlich eine zweite, unabhängige Chatbot-Implementierung auf `origin/feature/prognosis` (regelbasiert statt LLM, dort selbst als Platzhalter markiert). Beim Merge mit `main` wurde entschieden, die hier beschriebene (vollständig getestete, LLM-integrierte) Implementierung zu behalten. Deren Testdatei `tests/test_assistant.py` wurde dabei mit entfernt — auf `main` gibt es aktuell keine automatisierten Tests, Verifikation läuft über die `inspect_*`-Skripte.
+Es gab zwischenzeitlich eine zweite, unabhängige Chatbot-Implementierung auf `origin/feature/prognosis` (regelbasiert statt LLM, dort selbst als Platzhalter markiert). Beim Merge mit `main` wurde entschieden, die hier beschriebene (vollständig getestete, LLM-integrierte) Implementierung zu behalten. Deren Testdatei `tests/test_assistant.py` wurde dabei mit entfernt — inzwischen ist der `cached`-Pfad wieder automatisiert getestet (`tests/test_assistant_cached.py`, läuft ohne Key; siehe [[Projektstatus]]).
 
-Das Frontend ([[Assistant-Seite]]) wurde am 22.08.2026 auf die neuen Endpunkte und das neue Response-Schema umgestellt (diskriminierte Chart-Typen, `suggestions`-Feld, Fehleranzeige für 502/504, `conversation_id` für Folgefragen).
+Das Frontend ([[Assistant-Seite]]) wurde am 22.08.2026 auf die neuen Endpunkte und das neue Response-Schema umgestellt (diskriminierte Chart-Typen, `suggestions`-Feld, Fehleranzeige für 502/504, `conversation_id` für Folgefragen) und liegt jetzt auf **`/future-me`** (Label "Future Me").
+
+## Ausbau vom 22.08. ([[Sollstatus]]-Verbindungen)
+
+- **`what_if` versteht Kategorie-Prozent-Fragen:** `ExtractedIntent` hat neu `category_hint` + `percent`; `category_percent_hint`-Fragen sind nicht mehr `unsupported`, sondern lösen zu einem `adjust_category`-Eingriff auf (Subkategorie-Match gewinnt über Hauptkategorie; "halbieren" heisst default −50). Der Intent-Extraktions-Prompt wurde entsprechend erweitert.
+- **`intervention` in `what_if`-Antworten:** maschinenlesbares Feld mit dem aufgelösten Adjustment — Grundlage für **"Als Szenario in Prognose übernehmen"** (wird zum Chip auf `/`).
+- **Hebel verlinken auf ihre Kategorie-Blase** in `/kategorien`; **vorbefüllte Fragen** aus Prognose/Explorer landen im Eingabefeld (nicht automatisch abgeschickt), Übergabe via `core/handoff.ts` bzw. teilbarem `/future-me?q=…`.

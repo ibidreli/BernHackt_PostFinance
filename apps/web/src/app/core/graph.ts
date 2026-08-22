@@ -150,6 +150,35 @@ export class Graph {
     return (root.children ?? []).find((child) => child.flow === flow) ?? null;
   }
 
+  /**
+   * Distinct expense categories of the newest cached month, largest
+   * first - for pickers outside the explorer (adjust_category in the
+   * Prognose). Reads the cached both-flow response directly, so it is
+   * independent of the `flow` toggle.
+   */
+  readonly expenseCategories = computed<
+    { main: string; sub: string | null; label: string; amount_chf: number }[]
+  >(() => {
+    const month = this.months().at(-1);
+    const root = month ? this.cache().get(month)?.root : undefined;
+    const expense = root?.children?.find((child) => child.flow === 'expense');
+    if (!expense) return [];
+    const found = new Map<string, { main: string; sub: string | null; label: string; amount_chf: number }>();
+    const walk = (node: GraphNode) => {
+      if (node.node_type === 'category' && node.category_main && !found.has(node.id)) {
+        found.set(node.id, {
+          main: node.category_main,
+          sub: node.category_sub,
+          label: node.category_sub ?? node.category_main,
+          amount_chf: node.amount_chf,
+        });
+      }
+      for (const child of node.children ?? []) walk(child);
+    };
+    walk(expense);
+    return [...found.values()].sort((a, b) => b.amount_chf - a.amount_chf);
+  });
+
   /** Fetches every month once, as soon as the month list arrives. */
   private async preload(): Promise<void> {
     await Promise.all(untracked(() => this.months()).map((month) => this.load(month)));

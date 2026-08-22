@@ -17,6 +17,9 @@ services:
       - ./data:/data:ro
       # Live-reload for local development.
       - ./apps/api/app:/app/app
+      # So `docker compose exec api python -m pytest tests` runs the
+      # current suite without a rebuild or docker cp.
+      - ./apps/api/tests:/app/tests
     command:
       [
         "uvicorn",

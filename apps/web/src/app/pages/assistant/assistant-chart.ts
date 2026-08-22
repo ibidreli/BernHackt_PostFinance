@@ -57,9 +57,19 @@ export class AssistantChart {
   constructor() {
     afterRenderEffect({
       write: () => {
-        this.theme.isDark(); // re-render on theme change: the palette below is read from CSS
-        this.chart?.destroy();
-        this.chart = new Chart(this.canvas().nativeElement, this.config(this.spec()));
+        this.theme.isDark(); // re-read the CSS palette on theme change
+        const config = this.config(this.spec());
+        if (this.chart) {
+          // Update in place instead of destroy+new: an edited answer
+          // (replay after an assumption-slider move) morphs the existing
+          // curves into the new ones - all three spec types are line
+          // charts, so the instance is always reusable.
+          this.chart.data = config.data;
+          this.chart.options = config.options ?? {};
+          this.chart.update();
+        } else {
+          this.chart = new Chart(this.canvas().nativeElement, config);
+        }
       },
     });
     inject(DestroyRef).onDestroy(() => this.chart?.destroy());

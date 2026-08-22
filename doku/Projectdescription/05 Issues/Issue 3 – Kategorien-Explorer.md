@@ -1,6 +1,6 @@
 ---
 tags: [issue]
-status: offen
+status: umgesetzt
 issue: 3
 ---
 
@@ -18,8 +18,8 @@ API: `GET /api/v1/graph` (kompletter Baum mit Inline-Transaktionen an den Blätt
 
 ## Umsetzungsstand
 
-**Backend fertig, auf `main` (PR #10):** `graph_service.py`, `schemas/graph.py`, Merchant-Alias-Normalisierung (`merchant_normalization.py`) und zwei Routen-Varianten — REST (`/api/v1/graph`, `/api/v1/graph/months`) und OData (`/api/v1/GraphNodes`, `/api/v1/GraphMonths`). **Frontend nicht begonnen**, kein Consumer der Endpunkte. Siehe [[Kategorien-Explorer]] und [[Projektstatus]].
+**Geliefert** (Stand 22.08.2026). Backend auf `main` (PR #10): `graph_service.py`, `schemas/graph.py`, Merchant-Alias-Normalisierung (`merchant_normalization.py`); von den zwei Routen-Varianten blieb nach dem Frontend-Entscheid nur **REST** (`/api/v1/graph`, `/api/v1/graph/months`) — die OData-Variante (`GraphNodes`/`GraphMonths`) wurde entfernt. Frontend auf `main` (PR #13 + Ausbau am 22.08.): `pages/explorer/` auf Route `/kategorien`, mit Monats-Slider (kontinuierliches Scrubbing mit Morph), Detailpanel und Verbindungs-Buttons — **inklusive der im Issue nur als nice-to-have geführten Anomalie-Ringe** (Alert-Integration, per [[Sollstatus]] zur Pflicht erklärt). Siehe [[Kategorien-Explorer]] und [[Projektstatus]].
 
 ## Offene Fragen aus dem Issue
 
-"Beides" als Default oder Preset? FX fix oder pro Datum? Anomalien im `graph_service` oder eigener Service (empfohlen: eigener, damit Prognose/Chatbot ihn nutzen können)?
+"Beides" als Default oder Preset? FX fix oder pro Datum? Anomalien im `graph_service` oder eigener Service — *entschieden wie empfohlen:* eigener `alert_service` (PR #15), das Frontend joint client-seitig ([[Alerts]]).

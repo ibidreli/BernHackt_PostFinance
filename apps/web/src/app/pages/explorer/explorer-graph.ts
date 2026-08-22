@@ -1,6 +1,7 @@
 import { Component, computed, effect, input, model, output, signal } from '@angular/core';
 import { hierarchy, pack, type HierarchyCircularNode } from 'd3-hierarchy';
 
+import type { NodeAlertIndex } from '../../core/alerts';
 import { chf } from '../../core/chart-theme';
 import type { GraphMode, GraphNode } from '../../core/graph';
 
@@ -61,6 +62,9 @@ interface PackedNode {
   opacity: number;
 }
 
+/** "Nur Auffälligkeiten": non-alerted circles fade to a backdrop. */
+const DIMMED_FACTOR = 0.15;
+
 function packTree(tree: GraphNode): HierarchyCircularNode<GraphNode> {
   const root = hierarchy<GraphNode>(tree, (node) => node.children ?? undefined)
     // Only leaves contribute: containers already carry the sum, and
@@ -105,6 +109,10 @@ export class ExplorerGraph {
   readonly blend = input(0);
   readonly mode = input<GraphMode>('absolute');
   readonly dark = input(false);
+  /** Month-specific alert lookup for rings and the alert filter. */
+  readonly alertIndex = input<NodeAlertIndex | null>(null);
+  /** "Nur Auffälligkeiten": dim everything without an alert beneath it. */
+  readonly alertsOnly = input(false);
   /** Two-way, so the breadcrumb outside can drive the zoom too. */
   readonly focusId = model<string | null>(null);
   readonly selectedId = input<string | null>(null);
@@ -117,8 +125,10 @@ export class ExplorerGraph {
       lands in the same render flush as the snapped layout, so the
       browser animates from the last blended position to the final one. */
   private readonly lastInteraction = signal<'zoom' | 'data'>('data');
+  // Zoom deliberately short and firm: at 750ms the repacked circles
+  // visibly flew across the viewport; 300ms reads as a snap into place.
   protected readonly durationMs = computed(() =>
-    this.blendTree() ? 0 : this.lastInteraction() === 'zoom' ? 750 : 500,
+    this.blendTree() ? 0 : this.lastInteraction() === 'zoom' ? 300 : 500,
   );
 
   protected readonly size = SIZE;
@@ -145,6 +155,8 @@ export class ExplorerGraph {
     const focus = this.focus();
     const mode = this.mode();
     const dark = this.dark();
+    const alertIndex = this.alertIndex();
+    const alertsOnly = this.alertsOnly();
     const k = SIZE / (focus.r * 2);
 
     // Only the focused subtree plus the ancestors that frame it. Pack
@@ -169,6 +181,9 @@ export class ExplorerGraph {
       const label = isLeaf && own === parentLabel ? chf(node.data.amount_chf) : own;
       const fontSize = r > 150 ? 30 : 22;
       const fits = label.length * fontSize * GLYPH_WIDTH < r * 1.85;
+      // The filter dims instead of re-packing: positions never move, so
+      // spatial memory and the scrub morph survive filtering.
+      const dimmed = alertsOnly && !(alertIndex?.subtree.has(node.data.id) ?? false);
       return {
         id: node.data.id,
         data: node.data,
@@ -185,11 +200,11 @@ export class ExplorerGraph {
         // Only the ring directly below focus gets labels, and only where
         // the circle is actually big enough to hold one - deeper or
         // smaller ones overlap into noise.
-        showLabel: node.depth === focus.depth + 1 && r > LABEL_MIN_R && fits,
-        showAmount: !isLeaf && node.depth === focus.depth + 1 && r > AMOUNT_MIN_R && fits,
+        showLabel: node.depth === focus.depth + 1 && r > LABEL_MIN_R && fits && !dimmed,
+        showAmount: !isLeaf && node.depth === focus.depth + 1 && r > AMOUNT_MIN_R && fits && !dimmed,
         fontSize,
         isLeaf,
-        opacity: isLeaf ? LEAF_OPACITY : CONTAINER_OPACITY,
+        opacity: (isLeaf ? LEAF_OPACITY : CONTAINER_OPACITY) * (dimmed ? DIMMED_FACTOR : 1),
       };
       });
   });
@@ -300,6 +315,13 @@ export class ExplorerGraph {
     effect(() => {
       this.tree();
       this.lastInteraction.set('data');
+    });
+    // Every focus change is a zoom, wherever it came from - background
+    // click, breadcrumb, or deep link. Without this, breadcrumb zoom-out
+    // ran on the slower month-change pacing and the circles sailed.
+    effect(() => {
+      this.focusId();
+      this.lastInteraction.set('zoom');
     });
   }
 

@@ -4,7 +4,7 @@ status: verworfen
 issue: 6
 ---
 
-> [!important] Gestrichen (22.08.2026): Laut [[Sollstatus]] wird der Abo-Radar nicht mehr umgesetzt — Issue kann geschlossen werden.
+> [!important] Gestrichen (22.08.2026): Laut [[Sollstatus]] wird der Abo-Radar nicht mehr umgesetzt — Issue geschlossen. Das leere Verzeichnis `pages/abo-radar/` ist gelöscht; die Fixkosten-Sicht lebt als Teilmenge in der Prognose weiter (Fixkosten-Liste, Kündigungs-Szenarien).
 
 # Issue #6 — Abo-Radar (eigene View)
 

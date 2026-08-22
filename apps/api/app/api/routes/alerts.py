@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 
 from app.odata.envelope import odata_collection
 from app.odata.query import ODataFilterError, apply_query_options
+from app.schemas.alerts import Alert
 
 router = APIRouter()
 
@@ -15,6 +16,7 @@ _DEFAULT_ALERT_SELECT = (
     "alert_id,type,severity,date,month,merchant,category_main,category_sub,"
     "amount_chf,baseline_chf,count,booking_text,transaction_id,transaction_ids"
 )
+_ALERT_FIELDS = frozenset(Alert.model_fields)
 
 
 @router.get(
@@ -47,9 +49,10 @@ def list_alerts(
             orderby=orderby,
             top=top,
             skip=skip,
+            allowed_fields=_ALERT_FIELDS,
         )
     except ODataFilterError as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid $filter: {exc}") from exc
+        raise HTTPException(status_code=400, detail=f"Invalid query option: {exc}") from exc
 
     items = [
         vars(item) if isinstance(item, SimpleNamespace) else item

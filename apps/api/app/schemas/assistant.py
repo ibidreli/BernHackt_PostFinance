@@ -25,6 +25,8 @@ from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, Field
 
+from app.schemas.forecast import Adjustment
+
 AssistantHorizon = Literal["present", "1y", "5y", "10y"]
 """`present` maps 1:1 onto Feature #4's `horizon=next_salary` (same data,
 no assumptions applied - see issue: "Present ist die einzige Stufe ohne
@@ -236,6 +238,11 @@ class AssistantAskResponse(BaseModel):
     assumptions_used: AssumptionsUsed | None = None
     clarification: Clarification | None = None
     source: Source
+    intervention: Adjustment | None = Field(
+        default=None,
+        description='Nur bei what_if: der aufgelöste Eingriff, damit "Als Szenario in Prognose '
+        'übernehmen" exakt dasselbe an POST /Simulate übergeben kann.',
+    )
 
 
 # --- GET /suggestions ---------------------------------------------------

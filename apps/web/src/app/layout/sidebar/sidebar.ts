@@ -1,11 +1,6 @@
 import { Component, input } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
-import {
-  LucideChartLine,
-  LucideCircleDot,
-  LucideLogOut,
-  LucideMessageSquare,
-} from '@lucide/angular';
+import { LucideChartLine, LucideCircleDot, LucideMessageSquare } from '@lucide/angular';
 
 interface NavItem {
   label: string;
@@ -19,14 +14,7 @@ interface NavGroup {
 }
 
 @Component({
-  imports: [
-    RouterLink,
-    RouterLinkActive,
-    LucideChartLine,
-    LucideCircleDot,
-    LucideLogOut,
-    LucideMessageSquare,
-  ],
+  imports: [RouterLink, RouterLinkActive, LucideChartLine, LucideCircleDot, LucideMessageSquare],
   selector: 'app-sidebar',
   templateUrl: './sidebar.html',
 })
@@ -37,9 +25,9 @@ export class Sidebar {
     {
       label: 'Tools',
       items: [
-        { label: 'Kategorien', route: '/', icon: 'explorer' },
-        { label: 'Prognose', route: '/forecast', icon: 'forecast' },
-        { label: 'Assistenz', route: '/assistant', icon: 'assistant' },
+        { label: 'Prognose', route: '/', icon: 'forecast' },
+        { label: 'Kategorien', route: '/kategorien', icon: 'explorer' },
+        { label: 'Future Me', route: '/future-me', icon: 'assistant' },
       ],
     },
   ];

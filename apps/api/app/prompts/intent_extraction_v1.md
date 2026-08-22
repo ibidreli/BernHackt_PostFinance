@@ -35,7 +35,7 @@ WICHTIG: `what_if` deckt NUR vier Arten von Änderungen ab, sonst nichts:
 
 Extrahiere zusätzlich `merchant_hint` (Name des betroffenen Postens/Abos in Freitext, z.B. "Netflix"), `delta_chf` (bei "adjust"), `amount_chf` (bei "add"/"one_off").
 
-**Setze `category_percent_hint: true`**, wenn die Frage stattdessen eine PROZENTUALE Änderung einer ganzen Ausgaben-KATEGORIE beschreibt, ohne einen konkreten Posten zu nennen - z.B. "Was wäre, wenn ich beim Essen die Hälfte spare?", "Kantine halbieren", "20% weniger für Kleidung ausgeben". Das ist technisch NICHT abbildbar (es gibt keinen Prozent-auf-Kategorie-Anpassungstyp) - markiere es trotzdem als `what_if` mit `category_percent_hint: true`, der Code entscheidet dann, dass das nicht unterstützt wird. Erfinde in diesem Fall KEINEN `adjustment_kind`.
+**Setze `category_percent_hint: true`**, wenn die Frage stattdessen eine PROZENTUALE Änderung einer ganzen Ausgaben-KATEGORIE beschreibt, ohne einen konkreten Posten zu nennen - z.B. "Was wäre, wenn ich beim Essen die Hälfte spare?", "Kantine halbieren", "20% weniger für Kleidung ausgeben". Extrahiere dann zusätzlich `category_hint` (der genannte Kategoriename in Freitext, z.B. "Essen", "Kleidung", "Gastronomie") und `percent` (die Änderung in Prozent, negativ für eine Reduktion: "halbieren" -> -50, "20% weniger" -> -20, "ein Drittel mehr" -> +33). Erfinde in diesem Fall KEINEN `adjustment_kind` - das System bildet die Frage über eine Kategorie-Anpassung (`adjust_category`) ab.
 
 **`unsupported`** - alles andere: Smalltalk, Anlageempfehlungen, Fragen ausserhalb der drei Typen, Fragen zu anderen Personen/Themen. Im Zweifel lieber `unsupported` als eine Frage in einen der drei Typen zu pressen, die eigentlich nicht passt.
 

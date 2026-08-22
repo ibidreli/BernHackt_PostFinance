@@ -2,6 +2,8 @@ import { HttpClient } from '@angular/common/http';
 import { Service, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
+import type { AdjustmentPayload } from './forecast';
+
 export type Horizon = 'present' | '1y' | '5y' | '10y';
 export type Status = 'yes' | 'tight' | 'no_unless' | 'needs_clarification' | 'unsupported';
 export type Intent = 'affordability' | 'what_if' | 'time_to_goal' | 'unsupported';
@@ -85,6 +87,9 @@ export interface Answer {
   assumptions_used: AssumptionsUsed | null;
   clarification: Clarification | null;
   source: 'live' | 'cached';
+  /** Only on what_if answers: the resolved adjustment, so "Als Szenario
+      in Prognose übernehmen" hands the exact same intervention over. */
+  intervention: AdjustmentPayload | null;
 }
 
 /** `text` is what the chat shows, `sent` what the backend parsed. */
@@ -148,6 +153,25 @@ export class Assistant {
     }
   }
 
+  /** Chosen option per clarification field - so a replay can answer the
+      same clarification again without asking the user twice. */
+  private readonly clarificationAnswers = new Map<string, string>();
+
+  private request(message: string, pendingClarification: string | null): Promise<Answer> {
+    return firstValueFrom(
+      this.http.post<Answer>(`${api}/ask`, {
+        message,
+        horizon: this.horizon(),
+        assumptions: {
+          salary_growth_pct: this.salaryGrowthPct(),
+          inflation_pct: this.inflationPct(),
+          savings_rate_pct: this.savingsRatePct(),
+        },
+        context: { conversation_id: this.conversationId, pending_clarification: pendingClarification },
+      }),
+    );
+  }
+
   /**
    * `display` is what the chat shows; `message` is what the backend
    * parses. They differ when a clarification is answered - see
@@ -159,18 +183,8 @@ export class Assistant {
     this.messages.update((messages) => [...messages, { role: 'user', text: display, sent: message }]);
     this.pending.set(true);
     try {
-      const answer = await firstValueFrom(
-        this.http.post<Answer>(`${api}/ask`, {
-          message,
-          horizon: this.horizon(),
-          assumptions: {
-            salary_growth_pct: this.salaryGrowthPct(),
-            inflation_pct: this.inflationPct(),
-            savings_rate_pct: this.savingsRatePct(),
-          },
-          context: { conversation_id: this.conversationId, pending_clarification: pendingClarification },
-        }),
-      );
+      const answer = await this.request(message, pendingClarification);
+      if (pendingClarification) this.clarificationAnswers.set(pendingClarification, message);
       this.messages.update((messages) => [...messages, { role: 'bot', ...answer }]);
     } catch (error) {
       this.messages.update((messages) => [...messages, { role: 'error', text: describe(error) }]);
@@ -190,15 +204,44 @@ export class Assistant {
 
   /**
    * Re-runs the last real question so a moved slider is felt
-   * immediately. A clarification answer ("Bar") is not a question of
-   * its own, so replay goes back to the question that triggered it -
-   * the backend then asks the clarification again.
+   * immediately - updating the existing answer in place instead of
+   * appending a fresh exchange. If the backend asks the same
+   * clarification again, the remembered choice answers it silently, so
+   * the user is never asked twice for something they already decided.
    */
   async replay(): Promise<void> {
     const question = this.lastQuestion();
-    if (!question) return;
-    this.messages.update((messages) => messages.slice(0, -2));
-    await this.ask(question);
+    if (!question || this.pending()) return;
+    this.pending.set(true);
+    try {
+      let answer = await this.request(question, null);
+      // "Maximal eine Rückfrage pro Anfrage" - one auto-answer suffices;
+      // the guard only protects against a misbehaving backend.
+      let guard = 0;
+      while (answer.status === 'needs_clarification' && guard++ < 2) {
+        const field = answer.clarification?.field;
+        const remembered = field ? this.clarificationAnswers.get(field) : undefined;
+        if (!field || !remembered) break;
+        answer = await this.request(remembered, field);
+      }
+      this.messages.update((messages) => {
+        let index = -1;
+        for (let i = messages.length - 1; i >= 0; i--) {
+          if (messages[i].role === 'bot') {
+            index = i;
+            break;
+          }
+        }
+        if (index < 0) return [...messages, { role: 'bot', ...answer }];
+        const updated = [...messages];
+        updated[index] = { role: 'bot', ...answer };
+        return updated;
+      });
+    } catch (error) {
+      this.messages.update((messages) => [...messages, { role: 'error', text: describe(error) }]);
+    } finally {
+      this.pending.set(false);
+    }
   }
 
   private lastQuestion(): string | null {

@@ -39,6 +39,7 @@ SUGGESTIONS_BY_HORIZON: dict[str, list[str]] = {
     "present": [
         "Kann ich mir jetzt Kopfhörer für 300 leisten?",
         "Was wäre, wenn ich Netflix kündige?",
+        "Was wäre, wenn ich Gastronomie halbiere?",
         "Was wäre, wenn ich monatlich 50 mehr für Fitness ausgebe?",
     ],
     "1y": [

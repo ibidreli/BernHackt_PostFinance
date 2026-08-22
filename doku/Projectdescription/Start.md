@@ -2,7 +2,7 @@
 tags: [moc]
 ---
 
-# Rhylog — Projektbeschreibung
+# PostFinance Horizons — Projektbeschreibung
 
 Hackathon-Projekt für **BernHackt 2026**, Challenge [[Challenge & Ziel|"Beyond the List"]] von PostFinance: Transaktionslisten liefern Daten, aber keine Einsicht. Diese App macht aus einem Bank-CSV-Export **Prognosen, Visualisierungen und Antworten** — ohne Datenbank, ohne dass ein Sprachmodell je selbst rechnet.
 
@@ -17,16 +17,16 @@ Hackathon-Projekt für **BernHackt 2026**, Challenge [[Challenge & Ziel|"Beyond 
 - [[Datengrundlage]] — das Bank-CSV, seine Eigenheiten, die Mock-Daten
 - [[Design-System]] — PostFinance-Farbpalette und Prinzipien
 - [[Projektstatus]] — was fertig ist, was offen, was auf welchem Branch liegt
-- [[Sollstatus]] — das Zielbild: drei verbundene Seiten (Prognose → Kategorien → Future Me)
+- [[Sollstatus]] — das Zielbild: drei verbundene Seiten (Prognose → Kategorien → Future Me) — umgesetzt
 
 ## 02 Features
 
 | Feature | Issue | Status |
 |---|---|---|
-| [[Zukunftsprognose & Simulation]] | [[Issue 4 – Zukunftsprognose]] | ✅ Backend und Frontend auf `main`; laut [[Sollstatus]] neue Startseite, Szenarien werden um `adjust_category` erweitert |
-| [[Future-Me Chatbot]] | [[Issue 5 – Future-Me Chatbot]] | ✅ LLM-Backend auf `main` (PR #12) + UI; `cached`-Modus für Demos ohne Key |
-| [[Kategorien-Explorer]] | [[Issue 3 – Kategorien-Explorer]] | ✅ Backend (PR #10) + erste Frontend-Version (PR #13, ersetzt Overview auf `/`); laut [[Sollstatus]] zieht sie auf `/kategorien` |
-| [[Alerts]] | [[Issue 8 – Alerts]] | Definition steht; laut [[Sollstatus]] **keine eigene Seite**, wird in Prognose + Kategorien integriert |
+| [[Zukunftsprognose & Simulation]] | [[Issue 4 – Zukunftsprognose]] | ✅ Backend und Frontend auf `main`; Startseite (`/`), Szenarien inkl. `adjust_category` |
+| [[Future-Me Chatbot]] | [[Issue 5 – Future-Me Chatbot]] | ✅ LLM-Backend auf `main` (PR #12) + UI auf `/future-me`; `cached`-Modus für Demos ohne Key; `what_if` versteht Kategorie-Fragen |
+| [[Kategorien-Explorer]] | [[Issue 3 – Kategorien-Explorer]] | ✅ Backend (PR #10) + Frontend (PR #13 + Ausbau) auf `/kategorien` — mit Alert-Ringen und Verbindungs-Buttons |
+| [[Alerts]] | [[Issue 8 – Alerts]] | ✅ Backend (PR #15) + integriert in Prognose und Kategorien — **keine eigene Seite** ([[Sollstatus]]) |
 | [[Abo-Radar]] | [[Issue 6 – Abo-Radar]] | ❌ **gestrichen** ([[Sollstatus]]); Quellcode war verloren, Fixkosten-Sicht lebt in der Prognose weiter |
 
 ## 03 Backend
