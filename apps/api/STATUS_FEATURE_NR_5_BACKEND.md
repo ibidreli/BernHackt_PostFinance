@@ -91,6 +91,16 @@ Live verifiziert: historischer Bug wird erkannt, künstlich kaputter LLM-Text wi
 
 ---
 
+## T13 — Manuelle Verifikation (alle Intents × Horizonte)
+
+12-Zellen-Matrix (3 Intents × 4 Horizonte) live über echtes HTTP gegen den laufenden Container, plus `unsupported`, `GET /suggestions` (alle 4 Horizonte), Annahmen-Override-Wirkung. **88/90 automatisierte Checks bestanden.**
+
+**Ergebnis: PoC funktioniert sinnvoll.** Alle 12 Kombinationen liefern kohärenten, korrekten Text mit dem richtigen Chart-Typ; Zahlen im Text stimmen durchgehend mit `facts` überein; `interest_applied` durchgehend `false`; Annahmen-Override verändert das Ergebnis nachweislich in die richtige Richtung.
+
+**Der eine Fund (2 der 90 Checks, gleiche Ursache):** *"Was wäre, wenn ich monatlich 50 mehr für Fitness ausgebe?"* wurde als `adjust` (Änderung eines *bestehenden* Postens) statt `add` (neuer Posten) extrahiert — "Fitness" existiert nicht in den Daten, kein Treffer → `unsupported` statt einer Berechnung. Dieselbe Mehrdeutigkeit wie der in T3 dokumentierte "Möbel"-Fund, hier mit einem anderen Wort erneut aufgetreten. Kein Absturz, keine falsche Zahl — sauberer Fallback auf `unsupported` mit Hinweis auf die drei Fragetypen. Für einen PoC akzeptabel, für eine Produktreife würde man das Extraktions-Prompt mit Few-Shot-Beispielen dagegen härten (siehe T8, gleiche Empfehlung).
+
+Testskript: `t13_verification.py` (Scratchpad, nicht Teil des Repos — Ad-hoc-Verifikation wie die `inspect_*`-Skripte, aber gegen echtes HTTP statt Python-Funktionsaufrufe).
+
 ## Bekannte Grenzen (projektweit)
 
 - Kein automatisiertes Eval-Set für die Prompts — Verifikation über live getestete Einzelfälle in den `inspect_*`-Skripten, kein systematisches Test-Framework.
