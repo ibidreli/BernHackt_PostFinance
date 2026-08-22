@@ -31,6 +31,11 @@ Query-Optionen: `$filter`, `$select`, `$orderby`, `$top`, `$skip`, `$count`.
 curl "http://localhost:8000/api/v1/RecurringPayments?\$filter=is_active%20eq%20true&\$orderby=amount_chf%20desc&\$top=5&\$count=true"
 ```
 
+Ohne Zusatzparameter liefert der Endpoint die UI-sinnvolle Sicht: aktive Ausgaben (`flow='expense'`, `is_active=true`). Fuer Diagnose/Forecast-Debugging kann die Liste erweitert werden:
+
+- `include_inactive=true` zeigt auch inaktive Zahlungen.
+- `include_income=true` zeigt auch wiederkehrende Einnahmen wie Lohn.
+
 **`$filter`-Grammatik** (handgeschrieben, kein vollständiges OData-ABNF — siehe `app/odata/query.py`):
 
 - Operatoren: `eq`, `ne`, `gt`, `ge`, `lt`, `le`, kombinierbar mit `and`, `or`, `not`, Klammern
