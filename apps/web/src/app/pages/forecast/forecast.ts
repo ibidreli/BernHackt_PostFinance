@@ -27,14 +27,15 @@ export class ForecastPage {
   protected readonly newLabel = signal('Fitnessabo');
   protected readonly newAmount = signal(89);
   protected readonly newInterval = signal<Interval>('monthly');
-  protected readonly cancelId = signal('');
+  /** The "+" popover holding the free-form inputs. */
+  protected readonly menuOpen = signal(false);
 
   /**
    * Presets built from the actual data rather than hard-coded merchants:
    * "Miete +200" only exists if this account has a rent payment. The two
    * largest monthly expenses stand in for the issue's rent and Netflix.
    */
-  protected readonly presets = computed<Adjustment[]>(() => {
+  private readonly allPresets = computed<Adjustment[]>(() => {
     const [first, second] = this.forecast.topMonthly();
     const presets: Adjustment[] = [];
     if (first) {
@@ -66,11 +67,25 @@ export class ForecastPage {
     return presets;
   });
 
+  /** An applied preset is already shown as a chip - don't offer it twice. */
+  protected readonly presets = computed(() => {
+    const taken = new Set(this.forecast.adjustments().map((adjustment) => adjustment.id));
+    return this.allPresets().filter((preset) => !taken.has(preset.id));
+  });
+
   /** The full list runs to dozens of merchants - name a few, count the rest. */
   protected readonly outliers = computed(() => {
     const names = this.forecast.current()?.assumptions.excluded_outliers ?? [];
     const shown = names.slice(0, 3).join(', ');
     return names.length > 3 ? `${shown} und ${names.length - 3} weitere` : shown;
+  });
+
+  /** Already-cancelled subscriptions drop out of the picker. */
+  protected readonly cancellable = computed(() => {
+    const taken = new Set(this.forecast.adjustments().map((adjustment) => adjustment.id));
+    return this.forecast
+      .expenseSubscriptions()
+      .filter((payment) => !taken.has(`cancel:${payment.recurring_id}`));
   });
 
   /** A negative balance is not an amount that is "free". */
@@ -105,17 +120,13 @@ export class ForecastPage {
     this.forecast.horizon.set(horizon);
   }
 
-  protected cancelSelected(): void {
-    const payment = this.forecast
-      .expenseSubscriptions()
-      .find((candidate) => candidate.recurring_id === this.cancelId());
-    if (!payment) return;
+  protected cancelSubscription(payment: RecurringPayment): void {
     this.forecast.add({
       id: `cancel:${payment.recurring_id}`,
       label: `${this.name(payment)} kündigen`,
       payload: { type: 'cancel_recurring', recurring_id: payment.recurring_id },
     });
-    this.cancelId.set('');
+    this.menuOpen.set(false);
   }
 
   protected addSubscription(): void {
@@ -133,5 +144,6 @@ export class ForecastPage {
         start_date: this.forecast.baseline()?.as_of ?? new Date().toISOString().slice(0, 10),
       },
     });
+    this.menuOpen.set(false);
   }
 }
