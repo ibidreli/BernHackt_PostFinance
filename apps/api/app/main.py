@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 
+from app.api.routes.forecast import router as forecast_router
 from app.core.config import CSV_PATH
 from app.data.data_personal import load_raw_transactions
 from app.odata.envelope import ODataVersionMiddleware, install_odata_error_handlers
@@ -21,10 +22,6 @@ from app.repositories.transaction_repository import TransactionRepository, month
 from app.services.classification import classify_transactions
 from app.services.forecast_service import forecast
 from app.services.recurring_detection import detect_recurring_payments, detect_salary_day
-
-# T10 will mount the OData forecast routes here, e.g.:
-#   from app.api.routes.forecast import router as forecast_router
-#   app.include_router(forecast_router, prefix="/odata")
 
 
 @asynccontextmanager
@@ -45,13 +42,14 @@ app = FastAPI(
     description=(
         "Zukunftsprognose & Szenario-Simulation. Read-only OData service "
         "over an in-memory snapshot of the account export - no database. "
-        "See /odata/$metadata once T9/T10 land."
+        "See /odata/$metadata for the CSDL, /docs for interactive Swagger UI."
     ),
     version="0.1.0",
     lifespan=lifespan,
 )
 app.add_middleware(ODataVersionMiddleware)
 install_odata_error_handlers(app)
+app.include_router(forecast_router, prefix="/odata")
 
 
 @app.get("/odata/$metadata", tags=["odata"], include_in_schema=False)

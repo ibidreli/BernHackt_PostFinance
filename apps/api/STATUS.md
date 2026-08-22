@@ -176,7 +176,18 @@ Lebendes Dokument: pro Teilschritt (T0–T11) ein Satz Stand, plus **Bugs** (gef
 
 ## T10 — `api/routes/forecast.py`
 
-**Stand:** Noch nicht begonnen.
+**Stand:** Fertig — alle drei Endpunkte über echte HTTP-Requests verifiziert (`docker compose up` + curl): `GET /odata/RecurringPayments` (EntitySet), `GET /odata/GetForecast` (Function), `POST /odata/Simulate` (Action).
+
+**Bugs:** Keine gefunden.
+
+**Grenzen:**
+- `GetForecast` nutzt Query-Parameter (`?horizon=30d`) statt der strengen OData-Klammer-Syntax (`GetForecast(horizon='30d')`) — bewusste Abweichung fürs pragmatische Subset, hält Swagger UI nutzbar (im Moduldocstring begründet).
+- `recurring_id` (z. B. `"NETFLIX.COM::Wohnen::expense"`) ist kein "schönes" API-Feld, sondern die interne Eindeutigkeits-ID aus T7 direkt durchgereicht — funktional korrekt und verifiziert, aber für ein Frontend-Dropdown müsste man eher `merchant` anzeigen und `recurring_id` im Hintergrund mitführen.
+- `NoBalanceAvailableError` wird auf HTTP 409 gemappt (State-Konflikt) statt 404/400 — Interpretationsentscheidung, da es kein fehlendes Client-Input-Problem ist, sondern ein fehlender Serverzustand.
+
+**Erweiterungen:**
+- Bound Functions/Actions direkt auf der EntitySet-Route (`/RecurringPayments('id')/...`), falls später gebraucht.
+- `recurring_id` im Frontend hinter einem lesbaren Label verstecken, falls die rohe ID stört.
 
 ---
 
