@@ -37,3 +37,26 @@ Weitere Annahmen siehe T0–T13 unten, jeweils im Kontext.
 
 **Erweiterungen:**
 - `OPENAI_MODEL` könnte pro Aufruf (Extraktion vs. Formulierung) unterschiedlich gesetzt werden (z. B. günstigeres Modell für die Extraktion), aktuell ein einziger Wert für beide.
+
+---
+
+## T1 — schemas/assistant.py
+
+**Stand:** Fertig — alle Modelle importiert und live gegen den laufenden Container getestet (Request/Response-Roundtrip, diskriminierte Chart-Union für alle 3 Typen, Rückfrage-Zustand, unsupported-Zustand, Suggestions, Range-Validierung der Annahmen).
+
+**Bugs:** Keine gefunden. Das aus Feature #4 bekannte Pydantic-Problem (Feldname == Typname bricht mit `Field()` unter `from __future__ import annotations`) trat bewusst nicht auf: `ChartSeriesPoint.date: date` ist absichtlich ohne `Field()`-Aufruf geschrieben (gleiche Lösung wie `NextSalary.date` in Feature #4).
+
+**Design-Entscheidungen:**
+- **Nur der öffentliche REST-Contract** ist hier modelliert (`AssistantAskRequest`/`-Response`, `SuggestionsResponse`, Chart-Union). Das interne Structured-Output-Schema für LLM-Call #1 (Extraktion) kommt erst in T3, zusammen mit dem eigentlichen OpenAI-Call — sonst müsste das Schema zweimal entworfen werden, einmal geraten und einmal nach echtem Prompting korrigiert.
+- **`AssistantFacts`** ist ein einziges flexibles Modell mit optionalen Feldern für alle drei Intents (dokumentiert, welches Feld zu welchem Intent gehört) statt einer diskriminierten Union pro Intent — konsistent mit `Assumptions.notes` in Feature #4 (Freitext-Erweiterung statt starrer Pro-Fall-Typisierung).
+- **`what_if` bleibt auf die 4 bestehenden `Adjustment`-Typen aus Feature #4 beschränkt** (wiederverwendet in T3, hier noch nicht importiert) — Kategorie-Prozent-Fragen wie "Kantine halbieren" laufen in `unsupported`, kein 5. Typ.
+- **`potential_chf`** pro Hebel dokumentiert als "historisches Minimum"-Berechnung (deine Entscheidung), nicht die pauschalen 50 % aus dem Issue-Text.
+- **`AssumptionsUsed.salary_growth_pct`/`inflation_pct`** sind bei `horizon=present` immer `0` (keine Hochrechnung) — im Docstring festgehalten, damit T2/T5 das konsistent umsetzen.
+- **`Chart`** ist eine diskriminierte Union (`type`-Feld) über die 3 festen Chart-Typen, exakt wie die 4 `Adjustment`-Typen in Feature #4 — das Modell wählt nur den Typ, generiert keine eigene Struktur.
+
+**Grenzen:**
+- Range-Validierung der Annahmen (`0–5%` Lohnwachstum/Inflation, `0–100%` Sparquote) ist aus dem Issue-Text abgeleitet, nicht kalibriert — reine Plausibilitätsgrenze gegen offensichtlichen Unsinn (z. B. 50 % Lohnwachstum p.a.), keine fachliche Aussage.
+- `SuggestionsResponse.suggestions` hat `min_length=3, max_length=5` als Pydantic-Constraint direkt im Schema erzwungen — falls T-spätere Logik das mal nicht einhält, gibt es einen internen 500 statt eines stillen Fehlers. Bewusst so (fail loud), aber erwähnenswert.
+
+**Erweiterungen:**
+- `ChartSeriesPoint` wird von allen 3 Chart-Typen geteilt (auch dort, wo z. B. `before_after` eigentlich kein Band braucht) — hält die Typenzahl klein, könnte aber pro Chart-Typ spezifischer werden, falls das Frontend das unbenutzte `lower_chf`/`upper_chf` bei `before_after` verwirrend findet.
