@@ -24,13 +24,9 @@ Raiffeisen mandates) isn't cleanly split from the actual payee. Documented
 here rather than fixed - not worth the engineering time for ~0.3% of rows
 in a hackathon timeline.
 
-is_transfer detection is intentionally NOT implemented yet (product
-decision: calibrate against the real dataset rather than guess). Candidate
-signals found in the sample data: category "Finanzen // Sonstige
-Geldtransfers" (314 rows), "Überträge" (14 rows). "Rückerstattungen" (23
-rows) are refunds, not transfers - per the issue those need separate
-handling ("nicht als Einnahme prognostizieren") in the Topf-3
-classification step, not here.
+is_transfer detection uses conservative category-based heuristics from the
+sample data: category sublabels containing "Geldtransfers"/"Überträge" and
+top-level "Überträge". Refund categories are not treated as transfers.
 
 Also holds `monthly_category_stats` (T5): P25/Median/P75 of monthly
 category totals, the statistical basis for the Topf-2 band.
@@ -46,6 +42,7 @@ from typing import NamedTuple
 import pandas as pd
 
 from app.models.transaction import Transaction
+from app.services.merchant_normalization import canonical_merchant_key
 
 # --- merchant extraction ---------------------------------------------------
 
@@ -89,6 +86,7 @@ _TRAILING_COUNTRY_RE = re.compile(r"\s+\([A-Z]{2}\)\s*$")
 # "SWISSCOM (SCHWEIZ) AG 3050 BERN" -> "SWISSCOM (SCHWEIZ) AG".
 _POSTAL_CODE_CUT_RE = re.compile(r"\s\d{4}\s.*$")
 _MULTI_SPACE_RE = re.compile(r"\s+")
+_TRANSFER_CATEGORY_SUB_RE = re.compile(r"(geldtransfers|überträge|uebertraege)", re.IGNORECASE)
 
 
 def _clean(candidate: str) -> str:
@@ -138,6 +136,12 @@ def _split_category(category_raw: str | None) -> tuple[str | None, str | None]:
     return category_raw, None
 
 
+def _is_transfer(category_main: str | None, category_sub: str | None) -> bool:
+    if category_sub and _TRANSFER_CATEGORY_SUB_RE.search(category_sub):
+        return True
+    return (category_main or "").strip().lower() == "überträge"
+
+
 # --- normalization -----------------------------------------------------
 
 
@@ -158,19 +162,27 @@ def normalize_transactions(raw: pd.DataFrame) -> list[Transaction]:
         amount = row.credit_chf if has_credit else row.debit_chf
         category_raw = row.category_raw if pd.notna(row.category_raw) else None
         category_main, category_sub = _split_category(category_raw)
+        merchant = extract_merchant(row.text)
+        flow = "income" if has_credit else "expense"
 
         transactions.append(
             Transaction(
+                id="",
                 date=row.date.date(),
                 value_date=row.value_date.date(),
                 text=row.text,
-                merchant=extract_merchant(row.text),
+                merchant=merchant,
+                merchant_canonical=canonical_merchant_key(merchant),
                 bank_label=row.label if pd.notna(row.label) else None,
                 category_main=category_main,
                 category_sub=category_sub,
                 amount_chf=float(amount),
-                flow="income" if has_credit else "expense",
+                flow=flow,
+                original_amount=None,
+                original_currency=None,
+                status=None,
                 balance_chf=float(row.balance_chf),
+                is_transfer=_is_transfer(category_main, category_sub),
             )
         )
 
@@ -188,7 +200,7 @@ def normalize_transactions(raw: pd.DataFrame) -> list[Transaction]:
     # exact regardless - see its module docstring).
     transactions.reverse()
     transactions.sort(key=lambda t: (t.date, t.value_date))
-    return transactions
+    return [t.model_copy(update={"id": f"tx-{i + 1}"}) for i, t in enumerate(transactions)]
 
 
 # --- repository --------------------------------------------------------

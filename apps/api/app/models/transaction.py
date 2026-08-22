@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 
 class Transaction(BaseModel):
+    id: str
     date: date
     value_date: date
     text: str
@@ -22,6 +23,8 @@ class Transaction(BaseModel):
     """Best-effort extracted counterparty name. See
     `app/repositories/transaction_repository.py` for how this is derived
     and its known gaps."""
+    merchant_canonical: str
+    """Normalized merchant key reused across graph + recurring grouping."""
     bank_label: str | None
     """The export's own `Label` column. Observed to always be empty in
     the sample data - kept in case the real export populates it."""
@@ -31,10 +34,14 @@ class Transaction(BaseModel):
     """Signed: negative = expense, positive = income."""
     flow: str
     """`"expense"` or `"income"`."""
+    original_amount: float | None = None
+    """Original amount in original currency when available (else `None`)."""
+    original_currency: str | None = None
+    """Original currency (e.g. EUR) when available (else `None`)."""
+    status: str | None = None
+    """Optional transaction status when available from source data."""
     balance_chf: float
     """Running account balance after this booking, taken directly from
     the export's `Saldo in CHF` column."""
     is_transfer: bool = False
-    """Not detected yet - intentional scope decision, to be calibrated
-    against the real dataset. See repository module docstring for
-    candidate signals found in the sample data."""
+    """Best-effort transfer flag derived from category heuristics."""

@@ -10,11 +10,13 @@ Diese Datei ist die kompakte Referenz für die drei Endpunkte. Für Details zu B
 - **Interaktiv testen:** `/docs` (Swagger UI) nach `docker compose up` — siehe [README.md](../../README.md) für Run-Anleitung.
 - **CSDL-Dokument:** `GET /api/v1/$metadata`.
 
-## Die drei Endpunkte
+## OData-Endpunkte
 
 | Endpunkt | HTTP | OData-Konzept | Zweck |
 |---|---|---|---|
 | `/api/v1/RecurringPayments` | GET | EntitySet | Liste erkannter wiederkehrender Zahlungen, mit vollen Query-Optionen |
+| `/api/v1/GraphMonths` | GET | EntitySet-artig mit OData-Query | Verfügbare Monate für den Kategorien-Explorer (max. 12) |
+| `/api/v1/GraphNodes` | GET | EntitySet-artig mit OData-Query | Flache, filterbare Graph-Knoten für Drilldown (Monat/Flow/Kategorie/Merchant) |
 | `/api/v1/GetForecast` | GET | Function | Basisprognose ohne Szenario |
 | `/api/v1/Simulate` | POST | Action | Prognose mit Eingriffen, Baseline + Szenario in einer Antwort |
 
@@ -39,6 +41,49 @@ curl "http://localhost:8000/api/v1/RecurringPayments?\$filter=is_active%20eq%20t
 `$select` projiziert auf ein Feld-Subset — die Response hat dann kein festes Schema mehr, deshalb ist dieser Endpunkt in Swagger bewusst nicht strikt typisiert (im Gegensatz zu den anderen beiden).
 
 **`amount_history` ist standardmässig ausgeklammert** (ohne explizites `$select`), da es bei manchen Merchants sehr lang wird — gemessen: 88 % der Payload einer 10-Item-Liste war `amount_history` eines einzelnen Merchants mit 196 Verlaufseinträgen. Explizit abrufbar per `$select=merchant,amount_history`.
+
+---
+
+### `GET /api/v1/GraphMonths`
+
+Liefert die verfügbaren Monate als OData-EntitySet (`month`, `is_default`, `sort_key`), inkl. `$filter`/`$select`/`$orderby`/`$top`/`$skip`/`$count`.
+
+```bash
+curl "http://localhost:8000/api/v1/GraphMonths?\$orderby=sort_key&\$select=month,is_default"
+```
+
+---
+
+### `GET /api/v1/GraphNodes`
+
+Flache Knotenliste (statt ein grosser Baum), optimiert für Drilldown per Folge-Request.
+
+Query-Parameter:
+
+- `month=YYYY-MM` (default: letzter verfügbarer Monat)
+- `mode=absolute|delta`
+- `flow=expense|income|both`
+- `include_transactions=true|false` (default `false`, hält Payload klein)
+- `max_level=0..3` (optional, z. B. nur bis Merchant-Ebene)
+
+Zusätzlich volle OData-Query-Optionen (`$filter`, `$select`, `$orderby`, `$top`, `$skip`, `$count`).
+
+**Beispiele**
+
+Alle Kategorie-Knoten eines Monats:
+```bash
+curl "http://localhost:8000/api/v1/GraphNodes?month=2026-08&flow=expense&max_level=1&\$filter=node_type%20eq%20'category'"
+```
+
+Nur Merchants einer Kategorie (Drilldown):
+```bash
+curl "http://localhost:8000/api/v1/GraphNodes?month=2026-08&flow=expense&\$filter=node_type%20eq%20'merchant'%20and%20category_main%20eq%20'Einkaufen'%20and%20category_sub%20eq%20'Supermärkte'&\$orderby=amount_chf%20desc&\$top=20"
+```
+
+Nur Transaktions-Details eines Merchants:
+```bash
+curl "http://localhost:8000/api/v1/GraphNodes?month=2026-08&flow=expense&include_transactions=true&\$filter=node_type%20eq%20'transaction'%20and%20merchant%20eq%20'MIGROS'&\$select=tx_id,tx_date,tx_amount_chf,tx_original_description"
+```
 
 ---
 
@@ -125,3 +170,79 @@ Vollständige Liste mit Begründung in [STATUS.md](STATUS.md). Die wichtigsten:
 - `$metadata` ist statisch, nicht aus den Schemas generiert.
 - `GetForecast` nutzt Query-Parameter statt strikter OData-Klammer-Syntax (`GetForecast(horizon='...')`).
 - Band wächst linear über die Zeit, nicht mit gedämpfter Zeitskalierung.
+
+---
+
+# Assistenz (`/api/v1`)
+
+Zwei weitere OData-Ressourcen auf demselben Service - der ganze Backend spricht
+ein Protokoll, es gibt keinen zweiten REST-Zweig daneben.
+
+`Ask` ist eine Action und keine Function, aus demselben Grund wie `Simulate`:
+OData-Functions nehmen ihre Parameter in der URL, der Request trägt aber ein
+verschachteltes `assumptions`/`context`-Objekt. Seiteneffekte hat keine der
+beiden - der Service ist durchgehend read-only.
+
+**Die KI-Variante ist noch nicht gebaut.** Diese Routen sind der deterministische
+Pfad: Zahlen aus `forecast_service`, Formulierung aus Templates. Die Seite
+funktioniert damit heute, und das Modell wird später hinter demselben Contract in
+`intent_service` und den Formulierungsschritt eingesetzt.
+
+## `POST /api/v1/Ask`
+
+Beantwortet genau drei Fragetypen. Alles andere → `status: "unsupported"`, ohne
+Rateversuch.
+
+| `intent`        | Frage                                       | Chart-Typ           |
+| --------------- | ------------------------------------------- | ------------------- |
+| `affordability` | "Kann ich mir ein Auto für 30'000 leisten?"  | `wealth_over_time`  |
+| `what_if`       | "Was wäre, wenn ich Gastronomie halbiere?"   | `before_after`      |
+| `time_to_goal`  | "Wann habe ich 20'000 zusammen?"             | `goal_progress`     |
+
+`status` ist nie ein blosses Ja oder Nein: `yes` (Ziel erreichbar, Restpuffer
+≥ 3 Monatsausgaben), `tight` (erreichbar, Puffer darunter, mit Wartezeit),
+`no_unless` (Fehlbetrag, nötiger Monatsbetrag, Hebel) — dazu
+`needs_clarification` und `unsupported`.
+
+Horizonte: `present` (aktuelle Lohnperiode, die einzige Stufe ohne Annahmen —
+die Kurve kommt direkt aus `GetForecast(horizon=next_salary)`), `1y`, `5y`, `10y`.
+Ein Horizont im Fragetext schlägt den Umschalter; der tatsächlich verwendete
+steht als `horizon` in der Antwort.
+
+**Wo gerechnet wird.** Ausschliesslich in `forecast_service` — derselben Funktion,
+die auch der Slider aus Feature 2 aufruft. `forecast_service` endet bei 365 Tagen;
+für 5 und 10 Jahre extrapoliert `assistant_service` dessen Monatsraten unter den
+drei sichtbaren Annahmen weiter (Formel im Modul-Docstring). Kein Zins, keine
+Rendite: `assumptions_used.interest_applied` ist immer `false`.
+
+**Wo nicht gerechnet wird.** Die Extraktion (`intent_service`) liefert nur
+Parameter, die Formulierung baut den Text aus `facts` per Template. `_verify_numbers`
+prüft danach, dass jeder CHF-Betrag im Text einem Feld aus `facts` oder `levers`
+entspricht; bei Abweichung greift die neutrale Template-Formulierung. Die
+äquivalenten LLM-Contracts liegen versioniert unter [`prompts/`](../../prompts/).
+
+**Hebel** stammen ausschliesslich aus variablen Kategorien (Topf 2), abzüglich der
+nicht disponiblen (`Steuern`, `Versicherungen`, `Sonstige Geldtransfers`) — "spar
+bei der Krankenkasse" ist kein Rat. `potential_chf` ist pauschal 50 % der Kategorie.
+
+**Rückfragen** sind fest definiert, nicht vom Modell erfunden, und maximal eine pro
+Anfrage: fehlender Betrag, und Bar/Leasing ab CHF 10'000. Wird eine Rückfrage über
+`context.pending_clarification` beantwortet, wird sie nicht erneut gestellt.
+
+## `GET /api/v1/Suggestions?horizon=5y`
+
+Drei Vorschlagsfragen als Chips, abhängig vom Horizont. Collection-typisierte
+Function, die Fragen stehen also unter `value`. Query-Parameter statt strikter
+`Suggestions(horizon='5y')`-Syntax, konsistent mit `GetForecast`.
+
+## Bekannte Grenzen
+
+- Extraktion und Formulierung sind regelbasiert, nicht LLM-gestützt — gleicher
+  Contract, kein API-Key, kein Timeout in der Live-Demo. `prompts/` dokumentiert
+  den LLM-Ersatz; `source` ist entsprechend `"template"`. Die eigentlichen
+  KI-Routen stehen noch aus.
+- Leasing vereinfacht: 20 % Anzahlung, Rest als monatliche Rate über den Horizont
+  (in `assumptions_used.notes` benannt).
+- Folgefragen mit Bezug auf die vorherige Antwort ("und wenn ich 2 Jahre länger
+  warte?") sind nicht im Scope.
+- Die `tight`-Schwelle von 3 Monatsausgaben ist ein Startwert, nicht kalibriert.

@@ -26,6 +26,7 @@ Hackathon-Projekt für **BernHackt 2026**, Challenge [[Challenge & Ziel|"Beyond 
 | [[Abo-Radar]] | [[Issue 6 – Abo-Radar]] | Backend in Arbeit (uncommitted) |
 | [[Future-Me Chatbot]] | [[Issue 5 – Future-Me Chatbot]] | Auf Feature-Branches umgesetzt |
 | [[Kategorien-Explorer]] | [[Issue 3 – Kategorien-Explorer]] | Nur leere Platzhalter-Dateien |
+| [[Alerts]] | [[Issue 8 – Alerts]] | Definition erstellt, Umsetzung offen |
 
 ## 03 Backend
 
