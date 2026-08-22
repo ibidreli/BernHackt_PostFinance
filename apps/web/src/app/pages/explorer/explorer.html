@@ -1,0 +1,271 @@
+@let tree = graph.tree();
+@let focus = focusNode();
+
+<div class="flex h-full flex-col gap-3">
+  <!-- Breadcrumb: the only way back out besides clicking the background -->
+  <nav aria-label="Pfad" class="flex items-center gap-1.5 text-sm">
+    @for (node of breadcrumb(); track node.id; let last = $last) {
+      <button
+        type="button"
+        class="rounded px-1 py-0.5"
+        [class.text-muted-foreground]="!last"
+        [class.font-medium]="last"
+        [disabled]="last"
+        (click)="focusId.set($first ? null : node.id)"
+      >
+        {{ node.label }}
+      </button>
+      @if (!last) {
+        <span aria-hidden="true" class="text-muted-foreground">›</span>
+      }
+    }
+    @if (focus) {
+      <span class="ml-auto tabular-nums text-muted-foreground">
+        {{ chf(focus.amount_chf) }} · {{ focus.transaction_count }} Buchungen
+      </span>
+    }
+  </nav>
+
+  @if (graph.mode() === 'delta' && graph.baselineLabel()) {
+    <p class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+      <span>{{ graph.baselineLabel() }}</span>
+      <span class="flex items-center gap-1">
+        <span class="size-2.5 rounded-full" style="background: hsl(150 65% 45%)"></span> günstiger
+      </span>
+      <span class="flex items-center gap-1">
+        <span class="size-2.5 rounded-full" style="background: hsl(8 65% 55%)"></span> ungünstiger
+      </span>
+    </p>
+  }
+
+  <div class="min-h-0 flex-1">
+    @if (tree && tree.amount_chf > 0) {
+      <app-explorer-graph
+        [tree]="tree"
+        [mode]="graph.mode()"
+        [dark]="theme.isDark()"
+        [(focusId)]="focusId"
+        [selectedId]="selected()?.id ?? null"
+        (leafSelected)="selected.set($event)"
+        class="h-full"
+      />
+    } @else if (graph.isLoading()) {
+      <div class="flex h-full items-center justify-center text-sm text-muted-foreground">
+        <span class="loading loading-dots loading-sm"></span>
+      </div>
+    } @else {
+      <div class="flex h-full items-center justify-center text-center text-sm text-muted-foreground">
+        Für diesen Monat gibt es keine Buchungen in dieser Ansicht.
+      </div>
+    }
+  </div>
+
+  <!-- Zusammenfassungsleiste: ergänzt die Kreise, ersetzt sie nicht -->
+  @if (summaryVisible() && focus?.summary; as summary) {
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-surface px-3 py-2 text-sm">
+      <span>{{ summary.transaction_count }} Buchungen</span>
+      <span class="text-muted-foreground">·</span>
+      <span>Ø {{ chf(summary.avg_amount_chf) }}</span>
+      <span class="text-muted-foreground">·</span>
+      <span>Total {{ chf(summary.total_amount_chf) }}</span>
+      <button
+        type="button"
+        class="ml-auto text-sm text-muted-foreground underline"
+        (click)="showTable.set(!showTable())"
+      >
+        {{ showTable() ? 'Details ausblenden' : 'Details anzeigen' }}
+      </button>
+    </div>
+  }
+
+  @if (showTable() && summaryVisible()) {
+    <div class="max-h-56 overflow-y-auto rounded-lg border border-border">
+      <table class="table table-sm">
+        <thead>
+          <tr>
+            <th>Datum</th>
+            <th>Händler</th>
+            <th class="text-right">Betrag</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (node of focusTransactions(); track node.id) {
+            <tr class="cursor-pointer hover:bg-surface" (click)="selected.set(node)">
+              <td class="whitespace-nowrap">{{ dateLabel(node.transaction!.date) }}</td>
+              <td class="truncate">{{ node.transaction!.merchant_canonical }}</td>
+              <td class="whitespace-nowrap text-right tabular-nums">{{ chfExact(node.amount_chf) }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+
+  <!-- Zeitachse: alle Monate sind vorgeladen, kein Request beim Ziehen -->
+  <div class="flex items-center gap-3">
+    <input
+      type="range"
+      class="range range-primary range-xs flex-1"
+      aria-label="Monat"
+      min="0"
+      [max]="graph.months().length - 1"
+      step="1"
+      [value]="monthIndex()"
+      (input)="setMonthIndex(+$any($event.target).value)"
+    />
+    <span class="w-20 shrink-0 text-right text-sm font-medium tabular-nums">
+      {{ graph.activeMonth() ? monthLabel(graph.activeMonth()!) : '' }}
+    </span>
+  </div>
+</div>
+
+<!-- Rechte Leiste: Ansicht, Presets und das Detailpanel -->
+<ng-template appRail>
+  <div class="flex h-full flex-col gap-7 px-3 py-2 text-foreground">
+    <section>
+      <h2 class="px-1 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Fluss</h2>
+      <div class="flex flex-wrap gap-1.5">
+        @for (flow of flows; track flow.value) {
+          <button
+            type="button"
+            class="rounded-full px-3 py-1.5 text-sm transition-colors"
+            [class.bg-foreground]="graph.flow() === flow.value"
+            [class.text-background]="graph.flow() === flow.value"
+            [class.bg-surface]="graph.flow() !== flow.value"
+            [class.text-muted-foreground]="graph.flow() !== flow.value"
+            [attr.aria-pressed]="graph.flow() === flow.value"
+            (click)="setFlow(flow.value)"
+          >
+            {{ flow.label }}
+          </button>
+        }
+      </div>
+    </section>
+
+    <section>
+      <h2 class="px-1 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Ansicht</h2>
+      <div class="flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          class="rounded-full px-3 py-1.5 text-sm transition-colors"
+          [class.bg-foreground]="graph.mode() === 'absolute'"
+          [class.text-background]="graph.mode() === 'absolute'"
+          [class.bg-surface]="graph.mode() !== 'absolute'"
+          [class.text-muted-foreground]="graph.mode() !== 'absolute'"
+          [attr.aria-pressed]="graph.mode() === 'absolute'"
+          (click)="setMode('absolute')"
+        >
+          Betrag
+        </button>
+        <button
+          type="button"
+          class="rounded-full px-3 py-1.5 text-sm transition-colors disabled:opacity-40"
+          [class.bg-foreground]="graph.mode() === 'delta'"
+          [class.text-background]="graph.mode() === 'delta'"
+          [class.bg-surface]="graph.mode() !== 'delta'"
+          [class.text-muted-foreground]="graph.mode() !== 'delta'"
+          [disabled]="!graph.deltaAvailable()"
+          [attr.aria-pressed]="graph.mode() === 'delta'"
+          [attr.title]="graph.deltaAvailable() ? null : 'Braucht drei Vormonate'"
+          (click)="setMode('delta')"
+        >
+          Veränderung
+        </button>
+      </div>
+      @if (!graph.deltaAvailable()) {
+        <p class="px-1 pt-1.5 text-xs text-muted-foreground">
+          Für diesen Monat fehlen die drei Vormonate, die die Baseline braucht.
+        </p>
+      }
+    </section>
+
+    <section>
+      <h2 class="px-1 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Presets</h2>
+      <div class="flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          class="rounded-full border border-border px-3 py-1.5 text-sm text-muted-foreground hover:bg-surface hover:text-foreground"
+          (click)="presetOverview()"
+        >
+          Übersicht
+        </button>
+        <button
+          type="button"
+          class="rounded-full border border-border px-3 py-1.5 text-sm text-muted-foreground hover:bg-surface hover:text-foreground"
+          (click)="presetBoth()"
+        >
+          Ein und aus
+        </button>
+        <button
+          type="button"
+          class="rounded-full border border-border px-3 py-1.5 text-sm text-muted-foreground hover:bg-surface hover:text-foreground disabled:opacity-40"
+          [disabled]="!graph.deltaAvailable()"
+          (click)="presetChange()"
+        >
+          Veränderung
+        </button>
+      </div>
+    </section>
+
+    <!-- Detailpanel: die Originalbezeichnung macht die Händler-
+         Normalisierung nachprüfbar -->
+    @if (selected()?.transaction; as tx) {
+      <section class="animate-rise-in border-t border-border pt-4">
+        <div class="flex items-start justify-between gap-2 px-1">
+          <h2 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Buchung</h2>
+          <button
+            type="button"
+            class="text-sm text-muted-foreground"
+            aria-label="Detailpanel schliessen"
+            (click)="selected.set(null)"
+          >
+            ×
+          </button>
+        </div>
+        <p class="px-1 pt-1 text-lg font-semibold tabular-nums">{{ chfExact(tx.amount_chf) }}</p>
+        <dl class="mt-2 space-y-1.5 px-1 text-sm">
+          <div>
+            <dt class="text-xs text-muted-foreground">Händler</dt>
+            <dd>{{ tx.merchant_canonical }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs text-muted-foreground">Originalbezeichnung</dt>
+            <dd class="break-words text-xs text-muted-foreground">{{ tx.original_description }}</dd>
+          </div>
+          <div class="flex gap-6">
+            <div>
+              <dt class="text-xs text-muted-foreground">Buchung</dt>
+              <dd class="tabular-nums">{{ dateLabel(tx.date) }}</dd>
+            </div>
+            <div>
+              <dt class="text-xs text-muted-foreground">Valuta</dt>
+              <dd class="tabular-nums">{{ dateLabel(tx.value_date) }}</dd>
+            </div>
+          </div>
+          <div>
+            <dt class="text-xs text-muted-foreground">Kategorie</dt>
+            <dd>{{ tx.category_main }}@if (tx.category_sub) { // {{ tx.category_sub }} }</dd>
+          </div>
+          @if (tx.original_currency) {
+            <div>
+              <dt class="text-xs text-muted-foreground">Originalbetrag</dt>
+              <dd class="tabular-nums">{{ tx.original_amount }} {{ tx.original_currency }}</dd>
+            </div>
+          }
+          <div class="flex gap-6">
+            <div>
+              <dt class="text-xs text-muted-foreground">Fluss</dt>
+              <dd>{{ tx.flow === 'expense' ? 'Ausgabe' : 'Einnahme' }}</dd>
+            </div>
+            @if (tx.status) {
+              <div>
+                <dt class="text-xs text-muted-foreground">Status</dt>
+                <dd>{{ tx.status }}</dd>
+              </div>
+            }
+          </div>
+        </dl>
+      </section>
+    }
+  </div>
+</ng-template>

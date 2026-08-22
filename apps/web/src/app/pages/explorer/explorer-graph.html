@@ -1,0 +1,58 @@
+<svg
+  [attr.viewBox]="'0 0 ' + size + ' ' + size"
+  class="h-full w-full"
+  role="tree"
+  aria-label="Kategorien als Kreisdiagramm"
+>
+  <!-- Background: one level back out. -->
+  <rect
+    [attr.width]="size"
+    [attr.height]="size"
+    fill="transparent"
+    class="cursor-zoom-out"
+    (click)="zoomOut()"
+  />
+
+  @for (node of nodes(); track node.id) {
+    <circle
+      class="node"
+      [attr.cx]="node.x"
+      [attr.cy]="node.y"
+      [attr.r]="node.r"
+      [attr.fill]="node.fill"
+      [attr.fill-opacity]="node.isLeaf ? 0.95 : 0.75"
+      [class.selected]="node.id === selectedId()"
+      [class.leaf]="node.isLeaf"
+      role="treeitem"
+      tabindex="0"
+      [attr.aria-label]="node.label"
+      (click)="activate(node); $event.stopPropagation()"
+      (keydown.enter)="activate(node)"
+    />
+  }
+
+  <!-- Labels last so no circle paints over them. -->
+  @for (node of nodes(); track node.id) {
+    @if (node.showLabel) {
+      <g class="node label" [attr.transform]="'translate(' + node.x + ',' + node.labelY + ')'">
+        <text
+          text-anchor="middle"
+          [attr.dy]="node.showAmount ? '-0.1em' : '0.35em'"
+          [attr.font-size]="node.fontSize"
+        >
+          {{ node.label }}
+        </text>
+        @if (node.showAmount) {
+          <text
+            class="amount"
+            text-anchor="middle"
+            dy="1.5em"
+            [attr.font-size]="node.fontSize * 0.78"
+          >
+            {{ node.amount }}
+          </text>
+        }
+      </g>
+    }
+  }
+</svg>

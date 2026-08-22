@@ -9,8 +9,8 @@ export const routes: Routes = [
     children: [
       {
         path: '',
-        title: 'Dashboard',
-        loadComponent: () => import('./pages/dashboard/dashboard').then((m) => m.Dashboard),
+        title: 'Kategorien',
+        loadComponent: () => import('./pages/explorer/explorer').then((m) => m.ExplorerPage),
       },
       {
         path: 'forecast',
