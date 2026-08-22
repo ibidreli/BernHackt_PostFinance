@@ -13,7 +13,7 @@ router = APIRouter()
 
 _DEFAULT_ALERT_SELECT = (
     "alert_id,type,severity,date,month,merchant,category_main,category_sub,"
-    "amount_chf,baseline_chf,count,booking_text"
+    "amount_chf,baseline_chf,count,booking_text,transaction_id,transaction_ids"
 )
 
 

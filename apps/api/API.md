@@ -45,6 +45,10 @@ curl "http://localhost:8000/api/v1/RecurringPayments?\$filter=is_active%20eq%20t
 
 ---
 
+Default-Filterung der Erkennung: strikte periodische Zahlungen (`monthly`/`quarterly`/`yearly`) werden gezeigt. Zusaetzlich kommen wenige aktive `irregular` Kommunikations-Zahlungen durch, wenn sie Abo-aehnlich wirken; alle `irregular` Gruppen lassen sich fuer Debugging mit `RECURRING_INCLUDE_IRREGULAR=true` anzeigen.
+
+---
+
 ### `GET /api/v1/Alerts`
 
 Liefert die beim Startup deterministisch berechneten Auffaelligkeiten. Query-Optionen: `$filter`, `$select`, `$orderby`, `$top`, `$skip`, `$count`.
@@ -53,13 +57,16 @@ Liefert die beim Startup deterministisch berechneten Auffaelligkeiten. Query-Opt
 curl "http://localhost:8000/api/v1/Alerts?\$filter=severity%20eq%20'danger'&\$orderby=date%20desc&\$count=true"
 ```
 
-Felder: `alert_id`, `type` (`duplicate_charge` | `large_payment` | `category_spike`), `severity` (`danger` | `warning` | `info`), `date`, `month`, `merchant`, `category_main`, `category_sub`, `amount_chf`, `baseline_chf`, `count`, `booking_text`.
+Felder: `alert_id`, `type` (`duplicate_charge` | `large_payment` | `category_spike`), `severity` (`danger` | `warning` | `info`), `date`, `month`, `merchant`, `category_main`, `category_sub`, `amount_chf`, `baseline_chf`, `count`, `booking_text`, `transaction_id`, `transaction_ids`.
+
+`transaction_id` ist die primaere `Transaction.id` (`tx-*`) fuer Deep-Links in den Kategorien-Explorer. Dort kann das Frontend ueber `GraphNodes?include_transactions=true&$filter=tx_id eq 'tx-123'` den passenden Transaktions-Kreis finden. Bei Duplikaten und Kategorie-Spikes stehen alle betroffenen IDs in `transaction_ids`.
 
 Erkennung:
 
 - `duplicate_charge`: gleicher Tag, kanonisierter Merchant, gleicher Betrag, mindestens 2 Buchungen, Betrag mindestens `ALERT_DUPLICATE_MIN_CHF` (Default CHF 20).
-- `large_payment`: bestehende Topf-3/Outlier-Klassifikation, aber nur Ausgaben ab `OUTLIER_MIN_ABSOLUTE_CHF` (Default CHF 100), damit der Selten-Kategorie-Zweig keine Kleinbetraege alertet.
-- `category_spike`: nur Topf-2/variable Ausgaben; Monatsumme der Kategorie mindestens `ALERT_SPIKE_MULTIPLIER` mal 6-Monats-Median und Delta mindestens `ALERT_SPIKE_MIN_DELTA_CHF`; mindestens `ALERT_SPIKE_MIN_MONTHS` Baseline-Monate.
+- Standardmaessig werden nur Alerts im Lookback-Fenster `ALERT_LOOKBACK_MONTHS` geliefert (Default 12 Monate, `0` deaktiviert den Filter).
+- `large_payment`: bestehende Topf-3/Outlier-Klassifikation, aber nur Ausgaben ab `ALERT_LARGE_PAYMENT_MIN_CHF` (Default CHF 200). Stabile monatliche Dauerauftraege werden unterdrueckt, auch wenn die normale Recurring-Erkennung sie wegen Merchant-Extraktion nicht erwischt.
+- `category_spike`: nur Topf-2/variable Ausgaben; Monatsumme der Kategorie mindestens `ALERT_SPIKE_MULTIPLIER` mal 6-Monats-Median und Delta mindestens `ALERT_SPIKE_MIN_DELTA_CHF`; mindestens `ALERT_SPIKE_MIN_MONTHS` Baseline-Monate. Defaults: 2.5x, CHF 250, 4 Monate.
 
 Alle Alert-Typen ignorieren interne Transfers (`Transaction.is_transfer`) und Einnahmen.
 

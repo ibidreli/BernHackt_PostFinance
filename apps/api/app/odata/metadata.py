@@ -101,6 +101,8 @@ METADATA_XML = """<?xml version="1.0" encoding="UTF-8"?>
         <Property Name="baseline_chf" Type="Edm.Double"/>
         <Property Name="count" Type="Edm.Int32"/>
         <Property Name="booking_text" Type="Edm.String"/>
+        <Property Name="transaction_id" Type="Edm.String"/>
+        <Property Name="transaction_ids" Type="Collection(Edm.String)"/>
       </EntityType>
 
       <ComplexType Name="NextSalary">

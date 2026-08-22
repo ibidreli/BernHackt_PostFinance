@@ -45,13 +45,26 @@ OUTLIER_MIN_OCCURRENCES_12M = int(os.environ.get("OUTLIER_MIN_OCCURRENCES_12M", 
 # Window used for the median/percentile baseline of variable spending.
 VARIABLE_BASELINE_MONTHS = int(os.environ.get("VARIABLE_BASELINE_MONTHS", "6"))
 
+# The detector internally still has the "irregular" interval state, but
+# the API/UI usually should not see those noisy groups as recurring
+# payments. Flip this only for diagnostics; by default only a tiny,
+# subscription-like irregular subset is surfaced (see recurring_detection).
+RECURRING_INCLUDE_IRREGULAR = os.environ.get("RECURRING_INCLUDE_IRREGULAR", "false").lower() in {
+    "1",
+    "true",
+    "yes",
+}
+RECURRING_IRREGULAR_MIN_CHF = float(os.environ.get("RECURRING_IRREGULAR_MIN_CHF", "5"))
+
 # Alerts (Feature: Auffaelligkeiten). Kept separate from the forecast
 # thresholds so the frontend can tune alert sensitivity without changing
 # projection behaviour.
 ALERT_DUPLICATE_MIN_CHF = float(os.environ.get("ALERT_DUPLICATE_MIN_CHF", "20"))
-ALERT_SPIKE_MULTIPLIER = float(os.environ.get("ALERT_SPIKE_MULTIPLIER", "2.0"))
-ALERT_SPIKE_MIN_DELTA_CHF = float(os.environ.get("ALERT_SPIKE_MIN_DELTA_CHF", "150"))
-ALERT_SPIKE_MIN_MONTHS = int(os.environ.get("ALERT_SPIKE_MIN_MONTHS", "3"))
+ALERT_LOOKBACK_MONTHS = int(os.environ.get("ALERT_LOOKBACK_MONTHS", "12"))
+ALERT_LARGE_PAYMENT_MIN_CHF = float(os.environ.get("ALERT_LARGE_PAYMENT_MIN_CHF", "200"))
+ALERT_SPIKE_MULTIPLIER = float(os.environ.get("ALERT_SPIKE_MULTIPLIER", "2.5"))
+ALERT_SPIKE_MIN_DELTA_CHF = float(os.environ.get("ALERT_SPIKE_MIN_DELTA_CHF", "250"))
+ALERT_SPIKE_MIN_MONTHS = int(os.environ.get("ALERT_SPIKE_MIN_MONTHS", "4"))
 
 # --- Future-Me Chatbot (Feature #5) -------------------------------------
 

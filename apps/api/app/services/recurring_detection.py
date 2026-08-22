@@ -19,6 +19,7 @@ from collections import Counter, defaultdict
 from datetime import date
 from statistics import median
 
+from app.core.config import RECURRING_INCLUDE_IRREGULAR, RECURRING_IRREGULAR_MIN_CHF
 from app.models.recurring_payment import AmountHistoryEntry, Interval, RecurringPayment
 from app.models.transaction import Transaction
 from app.services.merchant_normalization import canonical_merchant_key
@@ -167,6 +168,33 @@ def _build_amount_history(transactions: list[Transaction]) -> list[AmountHistory
     return history
 
 
+def _surface_irregular(
+    *,
+    group_txs: list[Transaction],
+    category_main: str | None,
+    category_sub: str | None,
+    flow: str,
+    amount_chf: float,
+    is_active: bool,
+) -> bool:
+    """Small UI/API escape hatch for subscription-like irregular groups.
+
+    Returning every irregular group made RecurringPayments noisy. Returning
+    none hid plausible phone/communication payments whose booking dates or
+    labels jitter too much for the strict monthly detector. Keep this
+    intentionally narrow; irregular entries are still not projected by the
+    forecast.
+    """
+    return (
+        is_active
+        and flow == "expense"
+        and category_main == "Wohnen"
+        and category_sub == "Kommunikation"
+        and amount_chf >= RECURRING_IRREGULAR_MIN_CHF
+        and len(group_txs) >= MIN_OCCURRENCES
+    )
+
+
 def detect_recurring_payments(
     transactions: list[Transaction],
     reference_date: date | None = None,
@@ -202,13 +230,26 @@ def detect_recurring_payments(
         last_seen = dates[-1]
         interval_days = _INTERVAL_DAYS.get(interval, 30)
         is_active = (reference_date - last_seen).days <= 2 * interval_days
+        amount_chf = amount_history[-1].amount_chf
+
+        if interval == "irregular" and not RECURRING_INCLUDE_IRREGULAR:
+            keep_irregular = _surface_irregular(
+                group_txs=group_txs,
+                category_main=category_main,
+                category_sub=group_txs[-1].category_sub,
+                flow=flow,
+                amount_chf=amount_chf,
+                is_active=is_active,
+            )
+            if not keep_irregular:
+                continue
 
         results.append(
             RecurringPayment(
                 merchant=merchant_key,
                 category_main=category_main,
                 category_sub=group_txs[-1].category_sub,
-                amount_chf=amount_history[-1].amount_chf,
+                amount_chf=amount_chf,
                 interval=interval,
                 day_of_month=day_of_month,
                 flow=flow,

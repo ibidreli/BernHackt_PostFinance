@@ -24,6 +24,11 @@ class Alert(BaseModel):
     baseline_chf: float | None = Field(default=None, description="Category/payment baseline used by the alert.")
     count: int | None = Field(default=None, description="Duplicate group size.")
     booking_text: str | None = Field(default=None, description="Raw Avisierungstext reference where applicable.")
+    transaction_id: str | None = Field(default=None, description="Primary Transaction.id for graph deep-linking.")
+    transaction_ids: list[str] = Field(
+        default_factory=list,
+        description="All related Transaction.id values. Use GraphNodes tx_id to highlight transaction circles.",
+    )
 
 
 class AlertsEnvelope(BaseModel):
