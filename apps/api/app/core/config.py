@@ -45,6 +45,14 @@ OUTLIER_MIN_OCCURRENCES_12M = int(os.environ.get("OUTLIER_MIN_OCCURRENCES_12M", 
 # Window used for the median/percentile baseline of variable spending.
 VARIABLE_BASELINE_MONTHS = int(os.environ.get("VARIABLE_BASELINE_MONTHS", "6"))
 
+# Alerts (Feature: Auffaelligkeiten). Kept separate from the forecast
+# thresholds so the frontend can tune alert sensitivity without changing
+# projection behaviour.
+ALERT_DUPLICATE_MIN_CHF = float(os.environ.get("ALERT_DUPLICATE_MIN_CHF", "20"))
+ALERT_SPIKE_MULTIPLIER = float(os.environ.get("ALERT_SPIKE_MULTIPLIER", "2.0"))
+ALERT_SPIKE_MIN_DELTA_CHF = float(os.environ.get("ALERT_SPIKE_MIN_DELTA_CHF", "150"))
+ALERT_SPIKE_MIN_MONTHS = int(os.environ.get("ALERT_SPIKE_MIN_MONTHS", "3"))
+
 # --- Future-Me Chatbot (Feature #5) -------------------------------------
 
 # "live": real OpenAI calls. "cached": zero external calls at all - a fixed

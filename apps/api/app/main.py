@@ -14,6 +14,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes.assistant import router as assistant_router
+from app.api.routes.alerts import router as alerts_router
 from app.api.routes.forecast import router as forecast_router
 from app.api.routes.graph_odata import router as graph_odata_router
 from app.api.routes.graph import router as graph_router
@@ -24,6 +25,7 @@ from app.odata.metadata import METADATA_XML
 from app.repositories.balance_repository import BalanceRepository
 from app.repositories.transaction_repository import TransactionRepository, monthly_category_stats
 from app.services.classification import classify_transactions
+from app.services.alert_service import build_alerts
 from app.services.conversation_state import ConversationStore
 from app.services.forecast_service import forecast
 from app.services.recurring_detection import detect_recurring_payments, detect_salary_day
@@ -51,6 +53,7 @@ async def lifespan(app: FastAPI):
     recurring_payments = detect_recurring_payments(repo.all())
     app.state.recurring_payments = recurring_payments
     app.state.classifications = classify_transactions(repo.all(), recurring_payments)
+    app.state.alerts = build_alerts(repo.all(), app.state.classifications)
     # Feature #5 (T4): in-memory conversation state for Folgefragen +
     # multi-turn Rückfragen - see app/services/conversation_state.py.
     # Fresh on every restart, same "no database" philosophy as everything
@@ -74,6 +77,7 @@ install_odata_error_handlers(app)
 app.include_router(graph_odata_router, prefix="/api/v1")
 app.include_router(graph_router, prefix="/api/v1")
 app.include_router(forecast_router, prefix="/api/v1")
+app.include_router(alerts_router, prefix="/api/v1")
 app.include_router(assistant_router, prefix="/api/v1")
 
 # Read-only service over a local CSV, no auth and no cookies - the
@@ -128,6 +132,7 @@ def health(request: Request) -> dict:
         ),
         "salary_day": detect_salary_day(request.app.state.recurring_payments),
         "topf_counts": dict(Counter(c.topf for c in classifications)),
+        "alert_counts": dict(Counter(a.type for a in request.app.state.alerts)),
         "latest_balance": latest_balance.model_dump(mode="json") if latest_balance else None,
         "category_stats_computed": len(category_stats),
         "forecast_next_salary": _forecast_summary(request, "next_salary"),
