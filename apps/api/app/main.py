@@ -44,19 +44,19 @@ app = FastAPI(
     description=(
         "Zukunftsprognose & Szenario-Simulation. Read-only OData service "
         "over an in-memory snapshot of the account export - no database. "
-        "See /odata/$metadata for the CSDL, /docs for interactive Swagger UI."
+        "See /api/v1/$metadata for the CSDL, /docs for interactive Swagger UI."
     ),
     version="0.1.0",
     lifespan=lifespan,
 )
 app.add_middleware(ODataVersionMiddleware)
 install_odata_error_handlers(app)
-app.include_router(forecast_router, prefix="/odata")
 app.include_router(graph_odata_router, prefix="/api/v1")
 app.include_router(graph_router, prefix="/api/v1")
+app.include_router(forecast_router, prefix="/api/v1")
 
 
-@app.get("/odata/$metadata", tags=["odata"], include_in_schema=False)
+@app.get("/api/v1/$metadata", tags=["odata"], include_in_schema=False)
 def odata_metadata() -> Response:
     """CSDL service document for all exposed OData resources."""
     return Response(content=METADATA_XML, media_type="application/xml")

@@ -8,26 +8,26 @@ Diese Datei ist die kompakte Referenz für die drei Endpunkte. Für Details zu B
 - **OData v4, pragmatisches Subset.** `OData-Version: 4.0`-Header auf jeder Antwort, `@odata.context`-Envelope, OData-JSON-Error-Format (`{"error": {"code", "message"}}`). Kein `$batch`, keine Atom/XML-Repräsentation. Details: [STATUS.md, T9](STATUS.md#t9--odata-layer).
 - **Kein Zins, keine Rendite.** `assumptions.interest_applied` ist immer `false`. Die Hochrechnung ist reine Summierung.
 - **Interaktiv testen:** `/docs` (Swagger UI) nach `docker compose up` — siehe [README.md](../../README.md) für Run-Anleitung.
-- **CSDL-Dokument:** `GET /odata/$metadata`.
+- **CSDL-Dokument:** `GET /api/v1/$metadata`.
 
 ## OData-Endpunkte
 
 | Endpunkt | HTTP | OData-Konzept | Zweck |
 |---|---|---|---|
-| `/odata/RecurringPayments` | GET | EntitySet | Liste erkannter wiederkehrender Zahlungen, mit vollen Query-Optionen |
+| `/api/v1/RecurringPayments` | GET | EntitySet | Liste erkannter wiederkehrender Zahlungen, mit vollen Query-Optionen |
 | `/api/v1/GraphMonths` | GET | EntitySet-artig mit OData-Query | Verfügbare Monate für den Kategorien-Explorer (max. 12) |
 | `/api/v1/GraphNodes` | GET | EntitySet-artig mit OData-Query | Flache, filterbare Graph-Knoten für Drilldown (Monat/Flow/Kategorie/Merchant) |
-| `/odata/GetForecast` | GET | Function | Basisprognose ohne Szenario |
-| `/odata/Simulate` | POST | Action | Prognose mit Eingriffen, Baseline + Szenario in einer Antwort |
+| `/api/v1/GetForecast` | GET | Function | Basisprognose ohne Szenario |
+| `/api/v1/Simulate` | POST | Action | Prognose mit Eingriffen, Baseline + Szenario in einer Antwort |
 
 ---
 
-### `GET /odata/RecurringPayments`
+### `GET /api/v1/RecurringPayments`
 
 Query-Optionen: `$filter`, `$select`, `$orderby`, `$top`, `$skip`, `$count`.
 
 ```bash
-curl "http://localhost:8000/odata/RecurringPayments?\$filter=is_active%20eq%20true&\$orderby=amount_chf%20desc&\$top=5&\$count=true"
+curl "http://localhost:8000/api/v1/RecurringPayments?\$filter=is_active%20eq%20true&\$orderby=amount_chf%20desc&\$top=5&\$count=true"
 ```
 
 **`$filter`-Grammatik** (handgeschrieben, kein vollständiges OData-ABNF — siehe `app/odata/query.py`):
@@ -87,7 +87,50 @@ curl "http://localhost:8000/api/v1/GraphNodes?month=2026-08&flow=expense&include
 
 ---
 
-### `GET /odata/GetForecast`
+### `GET /api/v1/GraphMonths`
+
+Liefert die verfügbaren Monate als OData-EntitySet (`month`, `is_default`, `sort_key`), inkl. `$filter`/`$select`/`$orderby`/`$top`/`$skip`/`$count`.
+
+```bash
+curl "http://localhost:8000/api/v1/GraphMonths?\$orderby=sort_key&\$select=month,is_default"
+```
+
+---
+
+### `GET /api/v1/GraphNodes`
+
+Flache Knotenliste (statt ein grosser Baum), optimiert für Drilldown per Folge-Request.
+
+Query-Parameter:
+
+- `month=YYYY-MM` (default: letzter verfügbarer Monat)
+- `mode=absolute|delta`
+- `flow=expense|income|both`
+- `include_transactions=true|false` (default `false`, hält Payload klein)
+- `max_level=0..3` (optional, z. B. nur bis Merchant-Ebene)
+
+Zusätzlich volle OData-Query-Optionen (`$filter`, `$select`, `$orderby`, `$top`, `$skip`, `$count`).
+
+**Beispiele**
+
+Alle Kategorie-Knoten eines Monats:
+```bash
+curl "http://localhost:8000/api/v1/GraphNodes?month=2026-08&flow=expense&max_level=1&\$filter=node_type%20eq%20'category'"
+```
+
+Nur Merchants einer Kategorie (Drilldown):
+```bash
+curl "http://localhost:8000/api/v1/GraphNodes?month=2026-08&flow=expense&\$filter=node_type%20eq%20'merchant'%20and%20category_main%20eq%20'Einkaufen'%20and%20category_sub%20eq%20'Supermärkte'&\$orderby=amount_chf%20desc&\$top=20"
+```
+
+Nur Transaktions-Details eines Merchants:
+```bash
+curl "http://localhost:8000/api/v1/GraphNodes?month=2026-08&flow=expense&include_transactions=true&\$filter=node_type%20eq%20'transaction'%20and%20merchant%20eq%20'MIGROS'&\$select=tx_id,tx_date,tx_amount_chf,tx_original_description"
+```
+
+---
+
+### `GET /api/v1/GetForecast`
 
 | Parameter | Typ | Default |
 |---|---|---|
@@ -95,7 +138,7 @@ curl "http://localhost:8000/api/v1/GraphNodes?month=2026-08&flow=expense&include
 | `as_of` | Datum | heute |
 
 ```bash
-curl "http://localhost:8000/odata/GetForecast?horizon=90d&as_of=2026-08-22"
+curl "http://localhost:8000/api/v1/GetForecast?horizon=90d&as_of=2026-08-22"
 ```
 
 Antwort folgt exakt dem Issue-Contract (`as_of`, `horizon_end`, `opening_balance_chf`, `next_salary`, `free_to_spend`, `tight_date`, `known_payments`, `series`, `assumptions`) plus `@odata.context`. Volles Schema in Swagger (`ForecastEnvelope`).
@@ -106,10 +149,10 @@ Antwort folgt exakt dem Issue-Contract (`as_of`, `horizon_end`, `opening_balance
 
 ---
 
-### `POST /odata/Simulate`
+### `POST /api/v1/Simulate`
 
 ```bash
-curl -X POST "http://localhost:8000/odata/Simulate" \
+curl -X POST "http://localhost:8000/api/v1/Simulate" \
   -H "Content-Type: application/json" \
   -d '{
     "horizon": "365d",
