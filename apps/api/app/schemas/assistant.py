@@ -1,5 +1,5 @@
 """Pydantic schemas for the assistant API (Feature 3), matching the
-issue's API contract 1:1 with two documented deviations:
+issue's API contract 1:1 with three documented deviations:
 
 - `facts.wait_months` is added (the issue's acceptance criteria demand a
   wait time for `status="tight"` but its example `facts` block omits the
@@ -7,6 +7,9 @@ issue's API contract 1:1 with two documented deviations:
 - `chart.series` points carry an optional `baseline_chf` used only by the
   `before_after` chart type, so all three chart types share one point
   shape instead of needing three.
+- The endpoints are OData (`POST /odata/Ask`, `GET /odata/Suggestions`)
+  rather than the issue's `/api/v1/assistant/*`, so the whole service
+  speaks one protocol - see `app/api/routes/assistant.py`.
 
 Note the horizons here are *not* `app.schemas.forecast.Horizon`: the
 forecast service tops out at 365d, the assistant projects further (see
@@ -119,6 +122,19 @@ class AskResponse(BaseModel):
     source: Literal["live", "cached", "template"] = "template"
 
 
-class SuggestionsResponse(BaseModel):
-    horizon: AssistantHorizon
-    suggestions: list[str]
+# --- OData response envelopes (typed so Swagger shows the real response
+# shape, matching app/schemas/forecast.py's ForecastEnvelope) ----------
+
+
+class AskEnvelope(AskResponse):
+    """`POST /odata/Ask` response body."""
+
+    odata_context: str = Field(alias="@odata.context")
+
+
+class SuggestionsEnvelope(BaseModel):
+    """`GET /odata/Suggestions` response body - a Collection-typed
+    Function result, so the questions live under `value`."""
+
+    odata_context: str = Field(alias="@odata.context")
+    value: list[str]

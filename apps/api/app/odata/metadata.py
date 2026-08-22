@@ -1,11 +1,12 @@
 """Static OData v4 `$metadata` CSDL document (T9).
 
-Static, not generated from the Pydantic schemas: the service exposes
-exactly three fixed resources (`RecurringPayments`, `GetForecast`,
-`Simulate`, see `app/api/routes/forecast.py`, T10), so hand-writing the
-CSDL once is simpler and more transparent than building a schema-to-CSDL
-generator for a hackathon timeline. Keep this in sync with
-`app/schemas/forecast.py` by hand if fields change.
+Static, not generated from the Pydantic schemas: the service exposes a
+fixed, small set of resources (`RecurringPayments`, `GetForecast`,
+`Simulate` from `app/api/routes/forecast.py`; `Ask`, `Suggestions` from
+`app/api/routes/assistant.py`), so hand-writing the CSDL once is simpler
+and more transparent than building a schema-to-CSDL generator for a
+hackathon timeline. Keep this in sync with `app/schemas/forecast.py` and
+`app/schemas/assistant.py` by hand if fields change.
 
 `RecurringPayment.recurring_id` (the entity key) doesn't exist as a
 stored field - it's computed by `recurring_payment_id()` (T3) from
@@ -114,6 +115,65 @@ METADATA_XML = """<?xml version="1.0" encoding="UTF-8"?>
         <Property Name="date" Type="Edm.Date"/>
       </ComplexType>
 
+      <!-- Assistenz (app/schemas/assistant.py). Deterministic today; the
+           AI-backed extraction/phrasing steps slot in behind the same
+           contract. -->
+      <ComplexType Name="AssistantAssumptions">
+        <Property Name="salary_growth_pct" Type="Edm.Double"/>
+        <Property Name="inflation_pct" Type="Edm.Double"/>
+        <Property Name="savings_rate_pct" Type="Edm.Double"/>
+        <Property Name="interest_applied" Type="Edm.Boolean"/>
+        <Property Name="notes" Type="Collection(Edm.String)"/>
+      </ComplexType>
+      <ComplexType Name="AskContext">
+        <Property Name="conversation_id" Type="Edm.String"/>
+        <Property Name="pending_clarification" Type="Edm.String"/>
+      </ComplexType>
+      <ComplexType Name="Facts">
+        <Property Name="target_chf" Type="Edm.Double"/>
+        <Property Name="projected_chf" Type="Edm.Double"/>
+        <Property Name="gap_chf" Type="Edm.Double"/>
+        <Property Name="required_monthly_chf" Type="Edm.Double"/>
+        <Property Name="months_remaining" Type="Edm.Int32"/>
+        <Property Name="buffer_after_months" Type="Edm.Double"/>
+        <Property Name="wait_months" Type="Edm.Int32"/>
+      </ComplexType>
+      <ComplexType Name="Lever">
+        <Property Name="category" Type="Edm.String"/>
+        <Property Name="monthly_avg_chf" Type="Edm.Double"/>
+        <Property Name="potential_chf" Type="Edm.Double"/>
+      </ComplexType>
+      <ComplexType Name="AssistantChartPoint">
+        <Property Name="date" Type="Edm.String"/>
+        <Property Name="expected_chf" Type="Edm.Double"/>
+        <Property Name="lower_chf" Type="Edm.Double"/>
+        <Property Name="upper_chf" Type="Edm.Double"/>
+        <Property Name="baseline_chf" Type="Edm.Double"/>
+      </ComplexType>
+      <ComplexType Name="AssistantChart">
+        <Property Name="type" Type="Edm.String"/>
+        <Property Name="series" Type="Collection(Forecast.AssistantChartPoint)"/>
+        <Property Name="target_line_chf" Type="Edm.Double"/>
+        <Property Name="crossing_date" Type="Edm.String"/>
+      </ComplexType>
+      <ComplexType Name="Clarification">
+        <Property Name="question" Type="Edm.String"/>
+        <Property Name="options" Type="Collection(Edm.String)"/>
+        <Property Name="field" Type="Edm.String"/>
+      </ComplexType>
+      <ComplexType Name="AskResult">
+        <Property Name="intent" Type="Edm.String"/>
+        <Property Name="status" Type="Edm.String"/>
+        <Property Name="horizon" Type="Edm.String"/>
+        <Property Name="answer" Type="Edm.String"/>
+        <Property Name="facts" Type="Forecast.Facts"/>
+        <Property Name="levers" Type="Collection(Forecast.Lever)"/>
+        <Property Name="chart" Type="Forecast.AssistantChart"/>
+        <Property Name="assumptions_used" Type="Forecast.AssistantAssumptions"/>
+        <Property Name="clarification" Type="Forecast.Clarification"/>
+        <Property Name="source" Type="Edm.String"/>
+      </ComplexType>
+
       <Function Name="GetForecast">
         <Parameter Name="horizon" Type="Edm.String"/>
         <Parameter Name="as_of" Type="Edm.Date"/>
@@ -127,10 +187,25 @@ METADATA_XML = """<?xml version="1.0" encoding="UTF-8"?>
         <ReturnType Type="Forecast.SimulateResult"/>
       </Action>
 
+      <Action Name="Ask">
+        <Parameter Name="message" Type="Edm.String" Nullable="false"/>
+        <Parameter Name="horizon" Type="Edm.String"/>
+        <Parameter Name="assumptions" Type="Forecast.AssistantAssumptions"/>
+        <Parameter Name="context" Type="Forecast.AskContext"/>
+        <ReturnType Type="Forecast.AskResult"/>
+      </Action>
+
+      <Function Name="Suggestions">
+        <Parameter Name="horizon" Type="Edm.String"/>
+        <ReturnType Type="Collection(Edm.String)"/>
+      </Function>
+
       <EntityContainer Name="Container">
         <EntitySet Name="RecurringPayments" EntityType="Forecast.RecurringPayment"/>
         <FunctionImport Name="GetForecast" Function="Forecast.GetForecast"/>
         <ActionImport Name="Simulate" Action="Forecast.Simulate"/>
+        <ActionImport Name="Ask" Action="Forecast.Ask"/>
+        <FunctionImport Name="Suggestions" Function="Forecast.Suggestions"/>
       </EntityContainer>
 
     </Schema>

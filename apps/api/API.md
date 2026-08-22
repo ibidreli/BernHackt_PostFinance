@@ -128,12 +128,22 @@ Vollständige Liste mit Begründung in [STATUS.md](STATUS.md). Die wichtigsten:
 
 ---
 
-# Assistenz (`/api/v1/assistant`)
+# Assistenz (`/odata`)
 
-Plain REST, nicht OData: die beiden Endpunkte sind kein Entity-Set und keine
-typisierte Funktion über dem Datenmodell, sondern eine konversationelle Operation.
+Zwei weitere OData-Ressourcen auf demselben Service - der ganze Backend spricht
+ein Protokoll, es gibt keinen zweiten REST-Zweig daneben.
 
-## `POST /api/v1/assistant/ask`
+`Ask` ist eine Action und keine Function, aus demselben Grund wie `Simulate`:
+OData-Functions nehmen ihre Parameter in der URL, der Request trägt aber ein
+verschachteltes `assumptions`/`context`-Objekt. Seiteneffekte hat keine der
+beiden - der Service ist durchgehend read-only.
+
+**Die KI-Variante ist noch nicht gebaut.** Diese Routen sind der deterministische
+Pfad: Zahlen aus `forecast_service`, Formulierung aus Templates. Die Seite
+funktioniert damit heute, und das Modell wird später hinter demselben Contract in
+`intent_service` und den Formulierungsschritt eingesetzt.
+
+## `POST /odata/Ask`
 
 Beantwortet genau drei Fragetypen. Alles andere → `status: "unsupported"`, ohne
 Rateversuch.
@@ -174,15 +184,18 @@ bei der Krankenkasse" ist kein Rat. `potential_chf` ist pauschal 50 % der Katego
 Anfrage: fehlender Betrag, und Bar/Leasing ab CHF 10'000. Wird eine Rückfrage über
 `context.pending_clarification` beantwortet, wird sie nicht erneut gestellt.
 
-## `GET /api/v1/assistant/suggestions?horizon=5y`
+## `GET /odata/Suggestions?horizon=5y`
 
-Drei Vorschlagsfragen als Chips, abhängig vom Horizont.
+Drei Vorschlagsfragen als Chips, abhängig vom Horizont. Collection-typisierte
+Function, die Fragen stehen also unter `value`. Query-Parameter statt strikter
+`Suggestions(horizon='5y')`-Syntax, konsistent mit `GetForecast`.
 
 ## Bekannte Grenzen
 
-- Extraktion ist regelbasiert (Regex), nicht LLM-gestützt — gleicher Contract,
-  kein API-Key, kein Timeout in der Live-Demo. `prompts/` dokumentiert den
-  LLM-Ersatz; `source` ist entsprechend `"template"`.
+- Extraktion und Formulierung sind regelbasiert, nicht LLM-gestützt — gleicher
+  Contract, kein API-Key, kein Timeout in der Live-Demo. `prompts/` dokumentiert
+  den LLM-Ersatz; `source` ist entsprechend `"template"`. Die eigentlichen
+  KI-Routen stehen noch aus.
 - Leasing vereinfacht: 20 % Anzahlung, Rest als monatliche Rate über den Horizont
   (in `assumptions_used.notes` benannt).
 - Folgefragen mit Bezug auf die vorherige Antwort ("und wenn ich 2 Jahre länger

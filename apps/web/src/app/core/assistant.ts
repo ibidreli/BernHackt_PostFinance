@@ -74,14 +74,18 @@ export const HORIZONS: readonly { value: Horizon; label: string }[] = [
   { value: '10y', label: '10 Jahre' },
 ];
 
-const API = '/api/v1/assistant';
+const ODATA = '/odata';
 
 /**
  * Owns the conversation and the three assumption sliders.
  *
  * Deliberately thin: it holds no financial logic at all. Every number
  * shown in the UI arrives from the backend, which computes it through
- * `forecast_service` - the same function the Feature 2 slider calls.
+ * `forecast_service` - the same function the Prognose page's
+ * `GetForecast`/`Simulate` calls go through.
+ *
+ * The answers are deterministic for now; the AI-backed routes are not
+ * built yet and will land behind this same contract.
  */
 @Service()
 export class Assistant {
@@ -104,12 +108,13 @@ export class Assistant {
   });
 
   async loadSuggestions(): Promise<void> {
+    // Collection-typed OData Function: the questions arrive under `value`.
     const response = await firstValueFrom(
-      this.http.get<{ suggestions: string[] }>(`${API}/suggestions`, {
+      this.http.get<{ value: string[] }>(`${ODATA}/Suggestions`, {
         params: { horizon: this.horizon() },
       }),
     );
-    this.suggestions.set(response.suggestions);
+    this.suggestions.set(response.value);
   }
 
   /**
@@ -124,7 +129,7 @@ export class Assistant {
     this.pending.set(true);
     try {
       const answer = await firstValueFrom(
-        this.http.post<Answer>(`${API}/ask`, {
+        this.http.post<Answer>(`${ODATA}/Ask`, {
           message,
           horizon: this.horizon(),
           assumptions: {

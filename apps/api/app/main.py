@@ -42,8 +42,11 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Forecast Service API",
     description=(
-        "Zukunftsprognose & Szenario-Simulation. Read-only OData service "
-        "over an in-memory snapshot of the account export - no database. "
+        "Zukunftsprognose & Szenario-Simulation plus die Assistenz-Ressourcen. "
+        "Read-only OData service over an in-memory snapshot of the account export - "
+        "no database, and one protocol for everything: Prognose (`GetForecast`, "
+        "`Simulate`, `RecurringPayments`) und Assistenz (`Ask`, `Suggestions`) "
+        "rechnen beide über dieselbe `forecast_service`-Funktion. "
         "See /odata/$metadata for the CSDL, /docs for interactive Swagger UI."
     ),
     version="0.1.0",
@@ -52,10 +55,11 @@ app = FastAPI(
 app.add_middleware(ODataVersionMiddleware)
 install_odata_error_handlers(app)
 app.include_router(forecast_router, prefix="/odata")
-app.include_router(assistant_router, prefix="/api/v1/assistant")
+app.include_router(assistant_router, prefix="/odata")
 
 # Read-only service over a local CSV, no auth and no cookies - the
-# Angular dev server (a different origin) needs to reach it directly.
+# Angular dev server (a different origin) needs to reach it directly
+# when it isn't proxying.
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
 )
