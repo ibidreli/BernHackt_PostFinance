@@ -20,6 +20,7 @@ from app.odata.metadata import METADATA_XML
 from app.repositories.balance_repository import BalanceRepository
 from app.repositories.transaction_repository import TransactionRepository, monthly_category_stats
 from app.services.classification import classify_transactions
+from app.services.conversation_state import ConversationStore
 from app.services.forecast_service import forecast
 from app.services.recurring_detection import detect_recurring_payments, detect_salary_day
 
@@ -46,6 +47,11 @@ async def lifespan(app: FastAPI):
     recurring_payments = detect_recurring_payments(repo.all())
     app.state.recurring_payments = recurring_payments
     app.state.classifications = classify_transactions(repo.all(), recurring_payments)
+    # Feature #5 (T4): in-memory conversation state for Folgefragen +
+    # multi-turn Rückfragen - see app/services/conversation_state.py.
+    # Fresh on every restart, same "no database" philosophy as everything
+    # else here.
+    app.state.conversation_store = ConversationStore()
     yield
 
 

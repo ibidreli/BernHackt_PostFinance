@@ -115,3 +115,25 @@ Weitere Annahmen siehe T0–T13 unten, jeweils im Kontext.
 **Erweiterungen:**
 - Ein kleines Few-Shot-Beispiel-Set im Prompt (aktuell nur inline-Beispiele in der Erklärung, keine expliziten Input→Output-Paare) könnte Grenzfälle wie den "Möbel"-Fund oben zuverlässiger machen.
 - `ClarificationAnswer.default_used` könnte künftig auch bei `target_chf` einen Hinweis liefern (aktuell `None`, da es dort keinen sinnvollen Default-Betrag gibt) - bewusst so gelassen, aber falls das Frontend hier auch eine Meldung erwartet, müsste `validate_extraction`/T7 das nachziehen.
+
+---
+
+## T4 — Conversation-State (in-memory, Folgefragen-Basis)
+
+**Stand:** Fertig — `ConversationStore` in `app.state` verdrahtet (main.py), live getestet inkl. eines echten End-to-End-Beweises der Folgefrage-Auflösung mit einem echten `extract_intent()`-Call.
+
+**Bugs:** Keine gefunden.
+
+**Design-Entscheidungen:**
+- **`last_extracted` speichert die finalen, nach einer eventuellen Rückfrage-Antwort zusammengeführten Parameter**, nicht die rohe Erst-Extraktion — eine Folgefrage muss sich auf das beziehen können, was tatsächlich berechnet wurde, nicht auf einen Zwischenstand.
+- **`build_prior_turn_summary()` erzeugt Freitext, kein JSON** — der Kontext ist für das Sprachmodell gedacht (LLM-Call #1 liest ihn), nicht für Code, das ihn zurückparst.
+- **`resolve_pending_clarification()` ist bewusst konservativ:** Eine offene Rückfrage wird nur dann als beantwortet behandelt, wenn der Client das Feld explizit bestätigt (`context.pending_clarification`) ODER der Text eindeutig zu einer der festen Button-Optionen passt. Bei allem anderen (z. B. der Nutzer stellt trotz offener Rückfrage eine völlig neue Frage) wird die alte Rückfrage stillschweigend fallengelassen und frisch extrahiert — verhindert, dass eine unrelated neue Frage fälschlich als "Antwort" auf die alte Rückfrage fehlinterpretiert wird.
+- **Live verifiziert, nicht nur mit Fake-Daten:** Turn 1 und die Folgefrage sind beide echte `extract_intent()`-Aufrufe gegen die reale OpenAI-API. Ergebnis: "Und wenn ich 2 Jahre länger warte?" (nach "...in 5 Jahren ein Auto für 30000...") wurde korrekt als `target_chf=30000`, `target_label="Auto"` (aus dem Kontext übernommen) und `horizon_override="10y"` aufgelöst — das Modell hat "5 Jahre + 2 Jahre" richtig auf den nächstliegenden erlaubten Horizont (10y statt 5y, da nur `present`/`1y`/`5y`/`10y` erlaubt sind) gerundet, ohne dass das im Prompt explizit vorgegeben war.
+
+**Grenzen:**
+- Kein TTL/Cleanup — Zustände bleiben bis zum Neustart im Speicher (dokumentierte, akzeptierte Grenze, konsistent mit "keine Datenbank" im ganzen Projekt).
+- Nicht thread-safe gegen zwei gleichzeitige Requests auf dieselbe `conversation_id` (Dict ohne Lock) — für eine Live-Demo mit einer tippenden Person irrelevant.
+- `resolve_pending_clarification`'s Text-Match-Fallback (Fall B oben) ist ein simpler Lowercase-String-Vergleich, kein Fuzzy-Match — "leasing bitte" statt "Leasing" würde NICHT erkannt und liefe stattdessen in eine frische Extraktion (die vermutlich trotzdem sinnvoll wäre, da die Frage kontextuell noch erkennbar ist, aber nicht getestet).
+
+**Erweiterungen:**
+- `ConversationStore.__len__` ist als kleiner Health-Check-Hook gedacht (z. B. `/health` könnte später `len(app.state.conversation_store)` zeigen) - aktuell noch nirgends verdrahtet.
