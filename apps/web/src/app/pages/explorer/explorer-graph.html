@@ -20,7 +20,7 @@
       [attr.cy]="node.y"
       [attr.r]="node.r"
       [attr.fill]="node.fill"
-      [attr.fill-opacity]="node.isLeaf ? 0.95 : 0.75"
+      [attr.fill-opacity]="node.opacity"
       [class.selected]="node.id === selectedId()"
       [class.leaf]="node.isLeaf"
       role="treeitem"

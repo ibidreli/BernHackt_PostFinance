@@ -29,6 +29,9 @@ const INCOME_HUE = 158;
 /** viewBox units - a circle below this can't hold readable text. */
 const LABEL_MIN_R = 70;
 const AMOUNT_MIN_R = 105;
+
+const LEAF_OPACITY = 0.95;
+const CONTAINER_OPACITY = 0.75;
 /** Rough glyph width as a share of the font size - enough to tell
     whether a label fits inside its circle without measuring text. */
 const GLYPH_WIDTH = 0.56;
@@ -55,6 +58,18 @@ interface PackedNode {
   showAmount: boolean;
   fontSize: number;
   isLeaf: boolean;
+  opacity: number;
+}
+
+function packTree(tree: GraphNode): HierarchyCircularNode<GraphNode> {
+  const root = hierarchy<GraphNode>(tree, (node) => node.children ?? undefined)
+    // Only leaves contribute: containers already carry the sum, and
+    // adding both would double-count. Area therefore tracks francs,
+    // not booking count - rent is 12 bookings and CHF 21'840, the
+    // canteen 121 bookings and CHF 1'616.
+    .sum((node) => (node.children?.length ? 0 : Math.max(node.amount_chf, 0)))
+    .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
+  return pack<GraphNode>().size([SIZE, SIZE]).padding(3)(root);
 }
 
 function hueFor(node: HierarchyCircularNode<GraphNode>): number | null {
@@ -84,6 +99,10 @@ function deltaOf(node: HierarchyCircularNode<GraphNode>) {
 })
 export class ExplorerGraph {
   readonly tree = input.required<GraphNode>();
+  /** The neighbouring month's tree while the slider scrubs, null when idle. */
+  readonly blendTree = input<GraphNode | null>(null);
+  /** 0..1 - how far the morph sits between tree and blendTree. */
+  readonly blend = input(0);
   readonly mode = input<GraphMode>('absolute');
   readonly dark = input(false);
   /** Two-way, so the breadcrumb outside can drive the zoom too. */
@@ -92,21 +111,24 @@ export class ExplorerGraph {
   readonly leafSelected = output<GraphNode>();
 
   /** Zoom and slider transitions have different pacing, and both run
-      through the same CSS property - so the last interaction picks. */
+      through the same CSS property - so the last interaction picks.
+      While the slider scrubs, the geometry must follow the pointer
+      directly; on release blendTree turns null and the restored duration
+      lands in the same render flush as the snapped layout, so the
+      browser animates from the last blended position to the final one. */
   private readonly lastInteraction = signal<'zoom' | 'data'>('data');
-  protected readonly durationMs = computed(() => (this.lastInteraction() === 'zoom' ? 750 : 500));
+  protected readonly durationMs = computed(() =>
+    this.blendTree() ? 0 : this.lastInteraction() === 'zoom' ? 750 : 500,
+  );
 
   protected readonly size = SIZE;
 
-  private readonly layout = computed(() => {
-    const root = hierarchy<GraphNode>(this.tree(), (node) => node.children ?? undefined)
-      // Only leaves contribute: containers already carry the sum, and
-      // adding both would double-count. Area therefore tracks francs,
-      // not booking count - rent is 12 bookings and CHF 21'840, the
-      // canteen 121 bookings and CHF 1'616.
-      .sum((node) => (node.children?.length ? 0 : Math.max(node.amount_chf, 0)))
-      .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
-    return pack<GraphNode>().size([SIZE, SIZE]).padding(3)(root);
+  private readonly layout = computed(() => packTree(this.tree()));
+
+  /** Packed once per month boundary - only the lerp runs per pointer event. */
+  private readonly blendLayout = computed(() => {
+    const tree = this.blendTree();
+    return tree ? packTree(tree) : null;
   });
 
   private readonly focus = computed(() => {
@@ -116,6 +138,9 @@ export class ExplorerGraph {
   });
 
   protected readonly nodes = computed<PackedNode[]>(() => {
+    const blendLayout = this.blendLayout();
+    if (blendLayout) return this.blendedNodes(this.layout(), blendLayout, this.blend());
+
     const packed = this.layout();
     const focus = this.focus();
     const mode = this.mode();
@@ -164,9 +189,90 @@ export class ExplorerGraph {
         showAmount: !isLeaf && node.depth === focus.depth + 1 && r > AMOUNT_MIN_R && fits,
         fontSize,
         isLeaf,
+        opacity: isLeaf ? LEAF_OPACITY : CONTAINER_OPACITY,
       };
       });
   });
+
+  /** The morph between two packed months: nodes matched by their
+      backend-stable id lerp x/y/r, unmatched ones shrink out of the old
+      month or grow into the new one. Always rendered from the root -
+      the page clears the focus while the slider scrubs. */
+  private blendedNodes(
+    from: HierarchyCircularNode<GraphNode>,
+    to: HierarchyCircularNode<GraphNode>,
+    t: number,
+  ): PackedNode[] {
+    const mode = this.mode();
+    const dark = this.dark();
+    const targets = new Map(to.descendants().map((node) => [node.data.id, node]));
+    const out: PackedNode[] = [];
+
+    for (const a of from.descendants()) {
+      const b = targets.get(a.data.id);
+      if (b) {
+        targets.delete(a.data.id);
+        // Geometry lerps; everything discrete (fill, label, depth) comes
+        // from the nearer month, and the 400ms fill transition crossfades
+        // the switch at the midpoint.
+        const near = t < 0.5 ? a : b;
+        out.push(
+          this.blendedNode(
+            near,
+            a.x + (b.x - a.x) * t,
+            a.y + (b.y - a.y) * t,
+            a.r + (b.r - a.r) * t,
+            1,
+            mode,
+            dark,
+          ),
+        );
+      } else {
+        out.push(this.blendedNode(a, a.x, a.y, a.r * (1 - t), 1 - t, mode, dark));
+      }
+    }
+    for (const b of targets.values()) {
+      out.push(this.blendedNode(b, b.x, b.y, b.r * t, t, mode, dark));
+    }
+    // Shallow first, so a child always paints over its parent.
+    return out.sort((x, y) => x.depth - y.depth);
+  }
+
+  private blendedNode(
+    node: HierarchyCircularNode<GraphNode>,
+    x: number,
+    y: number,
+    r: number,
+    fade: number,
+    mode: GraphMode,
+    dark: boolean,
+  ): PackedNode {
+    const isLeaf = !node.data.children?.length;
+    const parentLabel = node.parent ? displayLabel(node.parent.data) : null;
+    const own = displayLabel(node.data);
+    const label = isLeaf && own === parentLabel ? chf(node.data.amount_chf) : own;
+    const fontSize = r > 150 ? 30 : 22;
+    const fits = label.length * fontSize * GLYPH_WIDTH < r * 1.85;
+    return {
+      id: node.data.id,
+      data: node.data,
+      x,
+      y,
+      r,
+      depth: node.depth,
+      fill: mode === 'delta' ? this.deltaFill(node, dark) : this.absoluteFill(node, dark),
+      label,
+      labelY: y - (isLeaf ? 0 : r - fontSize * 1.3),
+      amount: chf(node.data.amount_chf),
+      showLabel: node.depth === 1 && r > LABEL_MIN_R && fits,
+      // An interpolated CHF figure would be a number that never existed,
+      // so amounts stay hidden mid-morph.
+      showAmount: false,
+      fontSize,
+      isLeaf,
+      opacity: (isLeaf ? LEAF_OPACITY : CONTAINER_OPACITY) * fade,
+    };
+  }
 
   private absoluteFill(node: HierarchyCircularNode<GraphNode>, dark: boolean): string {
     const hue = hueFor(node);

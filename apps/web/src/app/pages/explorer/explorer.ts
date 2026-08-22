@@ -107,6 +107,85 @@ export class ExplorerPage {
     Math.max(this.graph.months().indexOf(this.graph.activeMonth() ?? ''), 0),
   );
 
+  /** Fractional slider position while dragging, null when idle. */
+  protected readonly scrub = signal<number | null>(null);
+
+  /** The two months a fractional position sits between, and how far along. */
+  private readonly scrubSpan = computed<{ a: string; b: string; t: number } | null>(() => {
+    const value = this.scrub();
+    const months = this.graph.months();
+    if (value === null || !months.length) return null;
+    const i = Math.max(0, Math.min(Math.floor(value), months.length - 1));
+    const j = Math.min(i + 1, months.length - 1);
+    return { a: months[i], b: months[j], t: value - i };
+  });
+
+  /** While scrubbing the graph shows floor(v), not the nearest month -
+      tree/blendTree/t stay monotone instead of flipping at the midpoint. */
+  protected readonly displayTree = computed<GraphNode | null>(() => {
+    const span = this.scrubSpan();
+    if (!span) return this.graph.tree();
+    return this.graph.treeFor(span.a) ?? this.graph.tree();
+  });
+
+  protected readonly blendTree = computed<GraphNode | null>(() => {
+    const span = this.scrubSpan();
+    if (!span || span.a === span.b) return null;
+    // Both neighbours must be cached and non-empty; otherwise degrade to
+    // the stepped behaviour instead of morphing against nothing.
+    const from = this.graph.treeFor(span.a);
+    const to = this.graph.treeFor(span.b);
+    if (!from || !to || from.amount_chf <= 0 || to.amount_chf <= 0) return null;
+    return to;
+  });
+
+  protected readonly blendT = computed(() => (this.blendTree() ? this.scrubSpan()!.t : 0));
+
+  protected readonly sliderValue = computed(() => this.scrub() ?? this.monthIndex());
+
+  protected onSliderInput(value: number): void {
+    // The blend renders from the root; clearing the focus here keeps the
+    // breadcrumb honest instead of naming a node that no longer shows.
+    this.focusId.set(null);
+    this.scrub.set(value);
+    this.setMonthIndex(Math.round(value));
+  }
+
+  protected onSliderChange(value: number): void {
+    this.scrub.set(null);
+    this.setMonthIndex(Math.round(value));
+  }
+
+  /** step="any" turns the native arrow keys into 1%-of-range micro-steps;
+      keyboard users still get whole months with the normal transition. */
+  protected onSliderKeydown(event: KeyboardEvent): void {
+    const last = this.graph.months().length - 1;
+    if (last < 0) return;
+    const current = Math.round(this.sliderValue());
+    let next: number;
+    switch (event.key) {
+      case 'ArrowLeft':
+      case 'ArrowDown':
+        next = current - 1;
+        break;
+      case 'ArrowRight':
+      case 'ArrowUp':
+        next = current + 1;
+        break;
+      case 'Home':
+        next = 0;
+        break;
+      case 'End':
+        next = last;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    this.scrub.set(null);
+    this.setMonthIndex(Math.max(0, Math.min(next, last)));
+  }
+
   /** Preset: the two flows side by side at root level, absolute. */
   protected presetBoth(): void {
     this.graph.flow.set('both');

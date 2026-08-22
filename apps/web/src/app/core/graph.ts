@@ -134,11 +134,21 @@ export class Graph {
    */
   readonly tree = computed<GraphNode | null>(() => {
     const root = this.response()?.root;
-    if (!root) return null;
-    const flow = this.flow();
+    return root ? this.subtreeFor(root, this.flow()) : null;
+  });
+
+  /** The current flow's subtree for an arbitrary cached month - the
+      slider scrub needs both neighbours of a fractional position.
+      Reactive when called inside a computed; null on a cache miss. */
+  treeFor(month: string): GraphNode | null {
+    const root = this.cache().get(month)?.root;
+    return root ? this.subtreeFor(root, this.flow()) : null;
+  }
+
+  private subtreeFor(root: GraphNode, flow: GraphFlow): GraphNode | null {
     if (flow === 'both') return root;
     return (root.children ?? []).find((child) => child.flow === flow) ?? null;
-  });
+  }
 
   /** Fetches every month once, as soon as the month list arrives. */
   private async preload(): Promise<void> {
