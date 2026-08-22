@@ -4,3 +4,7 @@ __pycache__/
 .mypy_cache/
 .venv/
 venv/
+
+# Secrets (OPENAI_API_KEY) - injected at container *runtime* via
+# docker-compose's `env_file`, not baked into the built image layers.
+app/.env

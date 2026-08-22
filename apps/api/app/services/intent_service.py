@@ -1,112 +1,295 @@
-"""Step 1 of the assistant pipeline: turn a free-text question into
-structured parameters, then validate them.
+"""Intent extraction + validation (Feature #5, T3) - "LLM-Call #1" from
+the issue's architecture diagram.
 
-The extraction is deliberately rule-based rather than an LLM call. The
-architecture principle of the feature is that the model understands the
-question and phrases the answer while *nothing* it produces is a number
-used in the maths - a regex satisfies exactly that contract, needs no
-API key, and can't time out during the live demo. `prompts/
-assistant_extraction.md` documents the equivalent LLM contract; swapping
-this module for a model call means returning the same `Extraction`.
+    Nutzerfrage -> LLM (Extraktion) -> strukturierte Parameter
+                -> Validierung -> Parameter plausibel? sonst Rückfrage
 
-Validation is separate from extraction on purpose (issue's "LLM liefert
-ungültige Parameter" edge case): implausible or missing parameters lead
-to a clarification, never to a calculation with garbage values.
+This module owns exactly those first two boxes. It never touches
+`forecast_service`, never sees a raw transaction, and never decides the
+final `yes`/`tight`/`no_unless` answer - that's T5, built on top of
+`ExtractedIntent` once `validate_extraction()` says `status="ok"`.
+
+Three things live here on purpose, not split across files:
+1. `ExtractedIntent` - the LLM's Structured Output schema. Raw signals
+   only ("what was said"), not decisions.
+2. `extract_intent()` - the actual OpenAI call (Structured Outputs via
+   `beta.chat.completions.parse`), with the `ASSISTANT_LLM_TIMEOUT_SECONDS`
+   timeout enforced and turned into an explicit exception on failure -
+   per your instruction, NOT a silent fallback that pretends to work.
+3. `validate_extraction()` / `apply_clarification_answer()` - the
+   deterministic clarification/unsupported ladder. The issue is explicit
+   that Rückfragen are "fest definiert, nicht vom Modell erfunden" - so
+   the fixed table below, not the LLM, decides wording and options.
 """
 
 from __future__ import annotations
 
 import re
-from typing import NamedTuple
+from pathlib import Path
+from typing import Literal, NamedTuple
 
-from app.schemas.assistant import AssistantHorizon, Clarification, Intent
+import openai
+from pydantic import BaseModel, Field
 
-# Swiss thousands separators: 30'000 / 30’000 / 30 000 / 30.000 / 30000.
-_AMOUNT_RE = re.compile(r"(?<![\d.,'’])(\d{1,3}(?:[\s.'’]\d{3})+|\d+(?:[.,]\d{1,2})?)(?!\d)")
-_HORIZON_RES: list[tuple[re.Pattern[str], AssistantHorizon]] = [
-    (re.compile(r"\b(10|zehn)\s*jahr"), "10y"),
-    (re.compile(r"\b(5|fünf|fuenf)\s*jahr"), "5y"),
-    (re.compile(r"\b(1|einem?)\s*jahr|nächste[ns]?\s*jahr|naechste[ns]?\s*jahr"), "1y"),
-    (re.compile(r"\bheute\b|\bjetzt\b|\bmomentan\b|diese[nm]?\s*monat"), "present"),
+from app.core.config import ASSISTANT_LLM_TIMEOUT_SECONDS, LARGE_PURCHASE_THRESHOLD_CHF, OPENAI_MODEL
+from app.schemas.assistant import AssistantHorizon, Clarification
+from app.services.llm_client import AssistantLLMError, AssistantLLMTimeoutError, get_client
+
+# Re-exported so existing `from app.services.intent_service import
+# AssistantLLMError` (etc.) keeps working after these moved to
+# `llm_client.py` (T7 - formulation needs the exact same types).
+__all__ = [
+    "AssistantLLMError",
+    "AssistantLLMTimeoutError",
+    "ExtractedIntent",
+    "extract_intent",
+    "validate_extraction",
+    "apply_clarification_answer",
 ]
-_INTENT_RES: list[tuple[re.Pattern[str], Intent]] = [
-    # "wann" first: "Wann kann ich mir X leisten?" is a time_to_goal
-    # question even though it also matches the affordability wording.
-    (re.compile(r"\bwann\b|wie lange|bis ich"), "time_to_goal"),
-    (re.compile(r"was wäre|was waere|wenn ich|angenommen|halbier|weniger für|weniger fuer|streich"), "what_if"),
-    (re.compile(r"kann ich|reicht|leisten|schaffe ich|liegt.*drin"), "affordability"),
-]
-_LEASING_RE = re.compile(r"\bleasing\b|\brate[n]?\b|\bfinanzier")
-_CASH_RE = re.compile(r"\bbar\b|\bcash\b|\beinmal")
-_REDUCTION_RE = re.compile(r"(\d{1,3})\s*%|\bhalbier|\bhälfte|\bhaelfte")
 
-# A purchase above this needs to know cash vs. leasing - below it the
-# difference doesn't move the answer enough to be worth a round trip.
-CLARIFY_PAYMENT_ABOVE_CHF = 10_000.0
+_PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "intent_extraction_v1.md"
+_SYSTEM_PROMPT = _PROMPT_PATH.read_text(encoding="utf-8")
 
 
-class Extraction(NamedTuple):
-    intent: Intent | None
-    target_chf: float | None = None
-    horizon: AssistantHorizon | None = None
-    """Set only when the *text* names a horizon - it then overrides the switcher."""
-    category: str | None = None
-    reduction_pct: float | None = None
-    payment_type: str | None = None
+# --- ExtractedIntent: LLM Structured Output ------------------------------
 
 
-def _parse_amount(text: str) -> float | None:
-    matches = _AMOUNT_RE.findall(text)
-    candidates = []
-    for raw in matches:
-        cleaned = re.sub(r"[\s.'’]", "", raw) if re.search(r"[\s.'’]\d{3}", raw) else raw.replace(",", ".")
-        try:
-            candidates.append(float(cleaned))
-        except ValueError:
-            continue
-    # Largest number wins: "in 5 Jahren ein Auto für 30'000" - the
-    # horizon digit is always the smaller one.
-    return max(candidates) if candidates else None
+class ExtractedIntent(BaseModel):
+    """LLM call #1's Structured Output. Every field is optional/nullable
+    by design (OpenAI Structured Outputs strict mode requires all
+    properties present in the schema, but nullable ones may come back
+    `null`) - `null` means "not mentioned in the text", which is exactly
+    what `validate_extraction()` needs to decide on a clarification.
+    """
 
-
-def extract(message: str, known_categories: list[str]) -> Extraction:
-    text = message.lower()
-    intent = next((i for pattern, i in _INTENT_RES if pattern.search(text)), None)
-    if intent is None:
-        return Extraction(intent=None)
-
-    horizon = next((h for pattern, h in _HORIZON_RES if pattern.search(text)), None)
-    reduction = _REDUCTION_RE.search(text)
-    payment_type = "leasing" if _LEASING_RE.search(text) else "cash" if _CASH_RE.search(text) else None
-
-    return Extraction(
-        intent=intent,
-        target_chf=_parse_amount(text),
-        horizon=horizon,
-        category=next((c for c in known_categories if c.lower() in text), None),
-        reduction_pct=float(reduction.group(1)) if reduction and reduction.group(1) else (50.0 if reduction else None),
-        payment_type=payment_type,
+    intent: Literal["affordability", "what_if", "time_to_goal", "unsupported"]
+    horizon_override: AssistantHorizon | None = Field(
+        default=None,
+        description="Nur gesetzt, wenn der Text selbst einen Zeitraum nennt, der vom Umschalter abweicht "
+        '(z.B. "in 5 Jahren"). null, wenn kein Zeitraum im Text genannt wird - der Umschalter-Wert gilt dann.',
+    )
+    target_chf: float | None = Field(default=None, description="Zielbetrag in CHF, falls genannt.")
+    target_label: str | None = Field(default=None, description="Kurzes Label für das Ziel, z.B. 'Auto', 'Ferien'.")
+    category_percent_hint: bool = Field(
+        default=False,
+        description='true, wenn die Frage eine prozentuale Änderung einer ganzen Kategorie beschreibt '
+        '("Kantine halbieren") statt eines konkreten Postens - technisch nicht abbildbar, siehe Prompt.',
+    )
+    adjustment_kind: Literal["cancel", "adjust", "add", "one_off"] | None = Field(
+        default=None, description="Nur bei what_if: welcher der 4 Anpassungstypen gemeint ist."
+    )
+    merchant_hint: str | None = Field(
+        default=None, description="Freitext-Name des betroffenen Abos/Postens, z.B. 'Netflix'."
+    )
+    delta_chf: float | None = Field(default=None, description="Betrags-Änderung bei adjust, z.B. +200.")
+    amount_chf: float | None = Field(default=None, description="Betrag bei add/one_off.")
+    payment_type: Literal["cash", "leasing"] | None = Field(
+        default=None, description='Nur gesetzt, falls im Text genannt ("bar", "leasing").'
+    )
+    payment_type_relevant: bool = Field(
+        default=True,
+        description="false, wenn target_label eine Erfahrung/Dienstleistung ist (Reise, Ferien, Ausbildung, "
+        "Event) statt eines physischen, finanzierbaren Guts (Auto, Möbel, Elektronik) - man least keine "
+        "Weltreise. Steuert, ob die Bar/Leasing-Rückfrage überhaupt sinnvoll ist (siehe Prompt).",
     )
 
 
-def validate(extraction: Extraction, pending_clarification: str | None) -> Clarification | None:
-    """At most one clarification per request - two make the live demo
-    sluggish. A field that was just asked about is never asked again:
-    the caller falls back to a documented default instead."""
-    if extraction.intent == "what_if":
-        return None
-    if extraction.target_chf is None and pending_clarification != "target_chf":
-        return Clarification(
-            question="Um welchen Betrag geht es?",
-            options=["CHF 5'000", "CHF 20'000", "CHF 30'000"],
-            field="target_chf",
+# --- LLM call ------------------------------------------------------------
+
+
+def extract_intent(
+    message: str,
+    horizon: AssistantHorizon,
+    prior_turn_summary: str | None = None,
+) -> ExtractedIntent:
+    """LLM call #1. `prior_turn_summary` is an optional short digest of
+    the previous question/answer for follow-up resolution (T4/T7 build
+    this - kept as a plain string here so extraction stays decoupled from
+    the conversation-state storage mechanism).
+
+    Raises `AssistantLLMTimeoutError`/`AssistantLLMError` on failure -
+    callers must surface this as an explicit error, not guess.
+    """
+    user_content = f"Horizont-Umschalter (aktuell gewählt): {horizon}\n\n"
+    if prior_turn_summary:
+        user_content += f"Vorheriger Gesprächsverlauf (für Folgefragen):\n{prior_turn_summary}\n\n"
+    user_content += f"Frage: {message}"
+
+    try:
+        completion = get_client().beta.chat.completions.parse(
+            model=OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "user", "content": user_content},
+            ],
+            response_format=ExtractedIntent,
+            timeout=ASSISTANT_LLM_TIMEOUT_SECONDS,
         )
-    target = extraction.target_chf or 0.0
+    except openai.APITimeoutError as exc:
+        raise AssistantLLMTimeoutError(ASSISTANT_LLM_TIMEOUT_SECONDS, stage="Extraktion") from exc
+    except openai.OpenAIError as exc:
+        raise AssistantLLMError(f"Extraktion fehlgeschlagen: {exc}") from exc
+
+    parsed = completion.choices[0].message.parsed
+    if parsed is None:
+        # Model refused or produced something that didn't fit the schema
+        # at all (rare with strict Structured Outputs, but the SDK models
+        # it as `parsed is None` rather than raising - handle it).
+        raise AssistantLLMError("Extraktion lieferte kein verwertbares Ergebnis.")
+    return parsed
+
+
+# --- Fixed clarification table (issue: "fest definiert, nicht vom Modell
+# erfunden") --------------------------------------------------------------
+
+_FIXED_CLARIFICATIONS: dict[str, Clarification] = {
+    "target_chf": Clarification(
+        question="Welcher Betrag ungefähr?",
+        options=[],  # Freitext - ein Betrag ist keine sinnvolle Button-Auswahl.
+        field="target_chf",
+    ),
+    "horizon": Clarification(
+        question="Wann ungefähr?", options=["1 Jahr", "5 Jahre", "10 Jahre"], field="horizon"
+    ),
+    "payment_type": Clarification(question="Bar oder Leasing?", options=["Bar", "Leasing"], field="payment_type"),
+    "recurrence": Clarification(
+        question="Einmalig oder monatlich?", options=["Einmalig", "Monatlich"], field="recurrence"
+    ),
+}
+
+
+class ValidationResult(NamedTuple):
+    status: Literal["ok", "needs_clarification", "unsupported"]
+    clarification: Clarification | None
+    reason: str | None  # internal/log-facing, e.g. for STATUS/debugging - not necessarily shown verbatim
+
+
+def validate_extraction(extracted: ExtractedIntent, request_horizon: AssistantHorizon) -> ValidationResult:
+    """Deterministic ladder, evaluated in this exact priority order so
+    at most ONE clarification is ever triggered per request (issue:
+    "Maximal eine Rückfrage pro Anfrage") - target amount first (nothing
+    else is computable without it), then timeframe, then payment type,
+    then what_if specifics.
+    """
+    if extracted.intent == "unsupported":
+        return ValidationResult("unsupported", None, "LLM hat die Frage keinem der drei Typen zugeordnet.")
+
+    if extracted.intent == "what_if" and extracted.category_percent_hint:
+        # Team decision (STATUS.md): "Kantine halbieren"-artige Fragen
+        # bleiben unsupported, kein 5. Adjustment-Typ.
+        return ValidationResult(
+            "unsupported", None, "Kategorie-Prozent-Anpassung, mit keinem der 4 Adjustment-Typen abbildbar."
+        )
+
+    if extracted.intent in ("affordability", "time_to_goal") and extracted.target_chf is None:
+        return ValidationResult("needs_clarification", _FIXED_CLARIFICATIONS["target_chf"], None)
+
     if (
-        extraction.intent == "affordability"
-        and target >= CLARIFY_PAYMENT_ABOVE_CHF
-        and extraction.payment_type is None
-        and pending_clarification != "payment_type"
+        extracted.intent in ("affordability", "time_to_goal")
+        and extracted.horizon_override is None
+        and request_horizon == "present"
     ):
-        return Clarification(question="Bar oder Leasing?", options=["Bar", "Leasing"], field="payment_type")
-    return None
+        # "present" beantwortet nur die Gegenwart (issue: "die einzige
+        # Stufe ohne Annahmen") - eine vorwärtsgerichtete Frage ohne
+        # erkennbaren Zeitraum braucht erst einen Horizont, bevor
+        # forecast_service überhaupt sinnvoll aufgerufen werden kann.
+        return ValidationResult("needs_clarification", _FIXED_CLARIFICATIONS["horizon"], None)
+
+    if (
+        extracted.intent == "affordability"
+        and extracted.target_chf is not None
+        and extracted.target_chf >= LARGE_PURCHASE_THRESHOLD_CHF
+        and extracted.payment_type is None
+        and extracted.payment_type_relevant
+    ):
+        return ValidationResult("needs_clarification", _FIXED_CLARIFICATIONS["payment_type"], None)
+
+    if extracted.intent == "what_if":
+        if extracted.adjustment_kind in ("cancel", "adjust") and not extracted.merchant_hint:
+            # Kein Rückfrage-Typ dafür im fest definierten Set - bewusst
+            # nicht selbständig um einen 5. Trigger erweitert (siehe
+            # ASSISTANT_STATUS.md, T3).
+            return ValidationResult(
+                "unsupported", None, "Kein erkennbarer Abo-/Postenname für cancel/adjust extrahiert."
+            )
+        if extracted.adjustment_kind is None:
+            return ValidationResult("needs_clarification", _FIXED_CLARIFICATIONS["recurrence"], None)
+
+    return ValidationResult("ok", None, None)
+
+
+# --- Applying a clarification answer (no LLM call needed) ---------------
+
+_ANSWER_MAPPERS: dict[str, dict[str, object]] = {
+    "payment_type": {"bar": "cash", "leasing": "leasing"},
+    "horizon": {"1 jahr": "1y", "5 jahre": "5y", "10 jahre": "10y"},
+    "recurrence": {"einmalig": "one_off", "monatlich": "add"},
+}
+
+_DEFAULTS_ON_IGNORE: dict[str, object] = {
+    # Issue: "Wird die Rückfrage ignoriert, rechnet der Bot mit dem
+    # Default und schreibt dazu, welchen er genommen hat." These are that
+    # default - `apply_clarification_answer` reports whether one was used
+    # so the caller (T7) can put it in the answer text.
+    "payment_type": "cash",  # einfacherer Pfad (one_off) statt Leasing-Annahme
+    "recurrence": "one_off",  # keine laufende Verpflichtung unterstellen, die nicht klar gemeint war
+}
+
+_AMOUNT_RE = re.compile(r"\d+(?:[.,]\d+)?")
+
+
+def _parse_amount(text: str) -> float | None:
+    cleaned = text.replace("'", "").replace("’", "")
+    match = _AMOUNT_RE.search(cleaned)
+    if not match:
+        return None
+    return float(match.group(0).replace(",", "."))
+
+
+class ClarificationAnswer(NamedTuple):
+    extracted: ExtractedIntent
+    default_used: str | None  # e.g. "Bar" if the user's answer couldn't be matched and a default was applied
+
+
+def apply_clarification_answer(previous: ExtractedIntent, field: str, answer_text: str) -> ClarificationAnswer:
+    """Deterministic, no LLM call - clarification answers are always one
+    of the small fixed set of button labels defined in
+    `_FIXED_CLARIFICATIONS` (issue: "immer mit Antwortvorschlägen als
+    Buttons"), so parsing them doesn't need one. Free-text answers that
+    don't match a button (user typed instead of clicking, or clicked
+    something unexpected) fall back to `_DEFAULTS_ON_IGNORE` - `field`
+    "target_chf" has no default (there's no sane number to guess), so an
+    unparseable amount answer leaves `target_chf` unset; the caller (T7)
+    should then treat that as `unsupported` rather than loop into a
+    second clarification (issue: max one Rückfrage per request).
+    """
+    if field == "target_chf":
+        parsed = _parse_amount(answer_text)
+        if parsed is not None:
+            return ClarificationAnswer(previous.model_copy(update={"target_chf": parsed}), None)
+        return ClarificationAnswer(previous, None)
+
+    mapping = _ANSWER_MAPPERS.get(field, {})
+    matched = mapping.get(answer_text.strip().lower())
+    default_used: str | None = None
+
+    if matched is None:
+        default = _DEFAULTS_ON_IGNORE.get(field)
+        if default is None:
+            return ClarificationAnswer(previous, None)
+        matched = default
+        # Report the *German* label of the default that was actually
+        # applied, not the internal machine value, so T7 can drop it
+        # straight into the answer text ("...ich habe Bar angenommen").
+        label_by_value = {v: k for k, v in mapping.items()}
+        default_used = label_by_value.get(matched, str(matched)).capitalize()
+
+    updates: dict[str, object] = {}
+    if field == "payment_type":
+        updates["payment_type"] = matched
+    elif field == "horizon":
+        updates["horizon_override"] = matched
+    elif field == "recurrence":
+        updates["adjustment_kind"] = matched
+
+    return ClarificationAnswer(previous.model_copy(update=updates) if updates else previous, default_used)

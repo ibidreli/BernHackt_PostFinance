@@ -35,6 +35,25 @@ the standard variance-of-a-sum-of-independent-periods argument (CLT) and
 was added after testing showed linear growth made the 365d band
 implausibly wide (~CHF 15'000 span) - see `_build_series` for the exact
 formula and `STATUS.md` (T7) for the before/after numbers.
+
+--- Feature #5 (Future-Me Chatbot), T2 ------------------------------
+
+`project_long_term()` extends this module for the chatbot's `1y`/`5y`/
+`10y` horizons (`present` needs no extension - it maps 1:1 onto
+`forecast(horizon="next_salary")` above, called directly by T7). It
+deliberately does NOT reuse `_build_series`'s per-event-date model:
+tracking individual projected Topf-1 occurrences (quarterly bills,
+annual taxes, ...) one by one over a 10-year/120-occurrence span is both
+noisy and pointless at that resolution. Instead every recurring payment
+is collapsed into one monthly-equivalent rate (income and fixed expense
+separately), and growth/inflation are applied to that rate via monthly
+compounding from the annual `salary_growth_pct`/`inflation_pct`
+assumptions - see `ASSISTANT_STATUS.md`, T2 for the full reasoning and
+the two decisions that were escalated to the team rather than assumed:
+fixed costs (Topf 1) stay nominal (do NOT inflate), and the variance
+band around the expected line reuses the exact same sqrt-dampening
+formula as `_build_series` above, just with the spread itself scaled by
+the same inflation factor as the underlying variable spend.
 """
 
 from __future__ import annotations
@@ -45,7 +64,12 @@ from collections import defaultdict
 from datetime import date, timedelta
 from typing import Literal, NamedTuple
 
-from app.core.config import DEFAULT_BUFFER_CHF, VARIABLE_BASELINE_MONTHS
+from app.core.config import (
+    DEFAULT_BUFFER_CHF,
+    INFLATION_DEFAULT_PCT,
+    SALARY_GROWTH_DEFAULT_PCT,
+    VARIABLE_BASELINE_MONTHS,
+)
 from app.models.recurring_payment import AmountHistoryEntry, RecurringPayment
 from app.models.transaction import Transaction
 from app.repositories.balance_repository import BalanceRepository
@@ -72,6 +96,7 @@ from app.services.classification import Classification
 from app.services.recurring_detection import detect_salary_recurring, recurring_payment_id
 
 _DAYS_PER_MONTH = 30.44  # 365.25 / 12
+DAYS_PER_MONTH = _DAYS_PER_MONTH  # public alias - T5 (Feature #5) needs this too for "present"-horizon month fractions
 _HORIZON_DAYS = {"30d": 30, "90d": 90, "365d": 365}
 _INTERVAL_STEP_MONTHS = {"monthly": 1, "quarterly": 3, "yearly": 12}
 _INTERVAL_MONTHLY_FACTOR = {"monthly": 1.0, "quarterly": 1 / 3, "yearly": 1 / 12}
@@ -437,10 +462,197 @@ def forecast(
     )
 
 
+# --- Feature #5: long-horizon projection (1y/5y/10y) ------------------
+
+LONG_HORIZON_MONTHS: dict[str, int] = {"1y": 12, "5y": 60, "10y": 120}
+"""Public so T7 can map `AssistantHorizon` -> `months` for the primary
+call. T5 may call `project_long_term` again with a *different* `months`
+(e.g. to search further out for `time_to_goal` or `wait_months`) - the
+function itself takes a plain month count, not the Literal horizon code,
+so it isn't limited to exactly these three spans."""
+
+
+def _monthly_ratio(annual_pct: float) -> float:
+    """Convert an annual growth/inflation percentage into the equivalent
+    constant monthly multiplier (`monthly_amount *= ratio` each month) -
+    smooth compounding rather than a once-a-year step, so even the `1y`
+    horizon (where an annual step might not have "happened" yet depending
+    on where `as_of` falls in the year) shows a proportional, continuous
+    effect instead of a somewhat arbitrary anniversary date."""
+    return (1 + annual_pct / 100) ** (1 / 12)
+
+
+def _geometric_cum(base_monthly: float, ratio: float, months: int) -> float:
+    """sum_{i=0}^{months-1} base_monthly * ratio**i - the closed-form
+    total after `months` of compounding, instead of actually looping and
+    summing (equivalent, just avoids float drift accumulating over up to
+    120 terms and is O(1))."""
+    if months <= 0:
+        return 0.0
+    if abs(ratio - 1.0) < 1e-9:
+        return base_monthly * months
+    return base_monthly * (ratio**months - 1) / (ratio - 1)
+
+
+def _monthly_equivalent_total(recurring_payments: list[RecurringPayment], flow: str) -> float:
+    """Sum of every *active* RecurringPayment's monthly-equivalent amount
+    for one flow direction - the long-horizon model's income/fixed-expense
+    base rate. "irregular"-interval payments contribute 0 (not
+    projectable, same as `_project_occurrences`/`_known_events` above -
+    kept consistent rather than re-deciding this per call site)."""
+    return sum(
+        rp.amount_chf * _INTERVAL_MONTHLY_FACTOR.get(rp.interval, 0.0)
+        for rp in recurring_payments
+        if rp.is_active and rp.flow == flow
+    )
+
+
+class LongTermForecast(NamedTuple):
+    """Everything T5 (Antwortlogik)/T6 (Chart) need from a long-horizon
+    projection. `monthly_*_chf` fields are all "today's CHF" (at `as_of`,
+    before growth/inflation) - T5 re-derives any specific month's grown
+    value itself via `_monthly_ratio`/`_geometric_cum` if it needs to,
+    rather than this type trying to anticipate every downstream need."""
+
+    as_of: date
+    horizon_end: date
+    opening_balance_chf: float
+    series: list[SeriesPoint]
+    salary_growth_pct: float
+    inflation_pct: float
+    savings_rate_pct: float
+    monthly_income_chf: float
+    monthly_fixed_expense_chf: float
+    monthly_variable_expense_chf: float
+    monthly_expenses_at_horizon_end_chf: float
+    """`monthly_fixed_expense_chf + monthly_variable_expense_chf` grown to
+    the *end* of the horizon (fixed stays flat, variable inflates) -
+    T5's "wie viele Monatsausgaben" denominator (`buffer_after_months`),
+    precomputed here so T5 doesn't need to re-derive `_monthly_ratio`."""
+    variable_baseline_months_used: int
+    excluded_outliers: list[str]
+    notes: list[str]
+
+
+def project_long_term(
+    transactions: list[Transaction],
+    recurring_payments: list[RecurringPayment],
+    classifications: list[Classification],
+    balance_repo: BalanceRepository,
+    months: int,
+    as_of: date | None = None,
+    salary_growth_pct: float | None = None,
+    inflation_pct: float | None = None,
+    savings_rate_pct: float | None = None,
+) -> LongTermForecast:
+    """Long-horizon projection for the chatbot's `1y`/`5y`/`10y` (or any
+    other month count T5 needs to search) - see module docstring for why
+    this doesn't reuse `_build_series`'s per-event-date model. Raises
+    `NoBalanceAvailableError` exactly like `forecast()`.
+    """
+    if months < 1:
+        raise ValueError("months must be >= 1")
+    if as_of is None:
+        as_of = date.today()
+
+    opening = balance_repo.as_of(as_of)
+    if opening is None:
+        raise NoBalanceAvailableError(as_of)
+
+    g = salary_growth_pct if salary_growth_pct is not None else SALARY_GROWTH_DEFAULT_PCT
+    infl = inflation_pct if inflation_pct is not None else INFLATION_DEFAULT_PCT
+
+    base_income = _monthly_equivalent_total(recurring_payments, "income")
+    base_fixed = _monthly_equivalent_total(recurring_payments, "expense")
+    base_var_median, base_var_p25, base_var_p75, months_used = _variable_monthly_totals(
+        classifications, as_of
+    )
+
+    if savings_rate_pct is not None:
+        resolved_savings_rate_pct = savings_rate_pct
+    elif base_income > 0:
+        # "aus der Historie berechnet" (issue) - what fraction of today's
+        # recurring income is left over after today's fixed+variable
+        # baseline, reported back so the UI can show it as the effective
+        # default even when the user never touched the slider.
+        resolved_savings_rate_pct = round((base_income - base_fixed - base_var_median) / base_income * 100, 1)
+    else:
+        resolved_savings_rate_pct = 0.0
+
+    r_income = _monthly_ratio(g)
+    r_var = _monthly_ratio(infl)
+
+    spread_lower_base = base_var_p75 - base_var_median  # pessimistic gap, today's CHF
+    spread_upper_base = base_var_median - base_var_p25  # optimistic gap, today's CHF
+
+    horizon_end = _step_months(as_of, months)
+    series: list[SeriesPoint] = []
+    for m in range(0, months + 1):
+        d = _step_months(as_of, m)
+        cum_income = _geometric_cum(base_income, r_income, m)
+
+        if savings_rate_pct is not None:
+            # Override replaces the income-minus-expenses computation for
+            # the *expected* line entirely (issue: "überschreibbar") -
+            # the band still comes from real variable-spend variance
+            # below, the override isn't assumed to change uncertainty.
+            cum_net = (savings_rate_pct / 100) * cum_income
+        else:
+            cum_var = _geometric_cum(base_var_median, r_var, m)
+            cum_fixed = base_fixed * m  # flat - fixed costs don't inflate, team decision (T2)
+            cum_net = cum_income - cum_fixed - cum_var
+
+        expected = opening.balance_chf + cum_net
+
+        # Same sqrt-dampened-spread formula as `_build_series` above
+        # (months_elapsed <= 1: linear; beyond: sqrt) - the spread itself
+        # is scaled by the same inflation factor as the variable spend it
+        # comes from, so the band's *relative* width relative to expected
+        # spend stays consistent across the whole horizon.
+        dampened = m if m <= 1 else math.sqrt(m)
+        spread_scale = r_var**m
+        lower = expected - spread_lower_base * spread_scale * dampened
+        upper = expected + spread_upper_base * spread_scale * dampened
+
+        series.append(
+            SeriesPoint(
+                date=d,
+                expected_chf=round(expected, 2),
+                lower_chf=round(lower, 2),
+                upper_chf=round(upper, 2),
+            )
+        )
+
+    notes: list[str] = []
+    if base_income == 0:
+        notes.append("Keine aktive wiederkehrende Einnahme erkannt - Hochrechnung ohne Lohnwachstums-Basis.")
+    if 0 < months_used < VARIABLE_BASELINE_MONTHS:
+        notes.append(f"Nur {months_used} Monate Historie verfügbar statt {VARIABLE_BASELINE_MONTHS}.")
+    if months_used < 3:
+        notes.append("Weniger als 3 Monate Historie - Prognose ohne Band (P25 = P75 = Median).")
+
+    return LongTermForecast(
+        as_of=as_of,
+        horizon_end=horizon_end,
+        opening_balance_chf=opening.balance_chf,
+        series=series,
+        salary_growth_pct=g,
+        inflation_pct=infl,
+        savings_rate_pct=resolved_savings_rate_pct,
+        monthly_income_chf=round(base_income, 2),
+        monthly_fixed_expense_chf=round(base_fixed, 2),
+        monthly_variable_expense_chf=round(base_var_median, 2),
+        monthly_expenses_at_horizon_end_chf=round(base_fixed + base_var_median * (r_var**months), 2),
+        variable_baseline_months_used=months_used,
+        excluded_outliers=_excluded_outliers(classifications, as_of, VARIABLE_BASELINE_MONTHS),
+        notes=notes,
+    )
+
+
 # --- POST /forecast/simulate ------------------------------------------
 
 
-def _apply_adjustments(
+def apply_adjustments(
     recurring_payments: list[RecurringPayment],
     adjustments: list[Adjustment],
 ) -> _ScenarioOverrides:
@@ -565,7 +777,7 @@ def simulate(
     baseline = forecast(
         transactions, recurring_payments, classifications, balance_repo, horizon, as_of, buffer_chf
     )
-    overrides = _apply_adjustments(recurring_payments, adjustments)
+    overrides = apply_adjustments(recurring_payments, adjustments)
     scenario = forecast(
         transactions,
         recurring_payments,

@@ -2,3 +2,11 @@ fastapi==0.115.6
 uvicorn[standard]==0.32.1
 pandas==2.2.3
 pydantic==2.10.3
+
+# Future-Me Chatbot (Feature #5) - pinned to the last 1.x line deliberately,
+# not the latest major (openai SDK is at 2.x/3.x as of writing): 1.x's
+# `chat.completions.create(..., response_format=...)` / `.parse()` Structured
+# Outputs API is what the intent/formulation code here is written against and
+# verified against - a major-version jump risks a breaking API shape we
+# haven't tested.
+openai==1.109.1

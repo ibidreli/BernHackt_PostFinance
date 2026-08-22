@@ -1,71 +1,113 @@
-"""Assistant routes: the two OData resources behind the Assistenz page.
+"""REST routes for the Future-Me Chatbot (Feature #5, T11) - the issue's
+own API contract literally (`POST /api/v1/assistant/ask`,
+`GET /api/v1/assistant/suggestions`), not folded into Feature #4's
+OData subset - your explicit decision when this feature was planned,
+documented in ASSISTANT_STATUS.md.
 
-    POST /odata/Ask          - Action (complex body, one answer object)
-    GET  /odata/Suggestions  - Function (read-only, Collection(Edm.String))
-
-`Ask` is an Action rather than a Function for the same reason `Simulate`
-is: OData Functions take their parameters in the URL, and the request
-carries a nested assumptions/context body. Neither has side effects -
-the service is read-only throughout - but an Action is the only shape
-OData offers for a POST body.
-
-The AI-backed version of this feature is not built yet. These routes are
-the deterministic path: the numbers come from `forecast_service` and the
-wording from templates, so the page works today and the model can be
-slotted into `intent_service`/the phrasing step without the contract
-changing.
+Both LLM-call failure modes (T3's/T7's `AssistantLLMTimeoutError`,
+`AssistantLLMError`) surface here as explicit HTTP errors - per your
+instruction, never a silent fallback that pretends to work. Error
+bodies still come out in the OData JSON error shape
+(`{"error": {"code", "message"}}`) because `install_odata_error_handlers`
+(Feature #4, T9) is installed service-wide in `main.py` - a deliberate
+pre-existing choice ("harmless on non-OData endpoints", see
+`app/odata/envelope.py`), kept here for one consistent error format
+across the whole API rather than inventing a second one.
 """
 
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request
 
-from app.odata.envelope import odata_collection, odata_single
-from app.schemas.assistant import AskEnvelope, AskRequest, AssistantHorizon, SuggestionsEnvelope
-from app.services.assistant_service import SUGGESTIONS, ask as run_ask
+from app.schemas.assistant import AssistantAskRequest, AssistantAskResponse, AssistantHorizon, SuggestionsResponse
+from app.services.assistant_service import ask as run_ask
 from app.services.forecast_service import NoBalanceAvailableError
+from app.services.llm_client import AssistantLLMError, AssistantLLMTimeoutError
 
 router = APIRouter()
 
+# Chip suggestions per horizon (issue: "Drei bis fünf vorgeschlagene
+# Fragen... abhängig vom gewählten Horizont"). Deliberately natural,
+# varied phrasing per tab rather than forcing every entry to be one of
+# T9's 5 cached demo questions - GET /suggestions is a general UX helper
+# for live mode, not a cached-mode contract; a chip that doesn't happen
+# to match the cached set still degrades gracefully (T9's
+# `_CACHED_NO_MATCH_PREFIX` names the real options). Most entries here
+# ARE cached-question matches anyway (verified live during T5-T10),
+# only the 10y affordability example isn't.
+SUGGESTIONS_BY_HORIZON: dict[str, list[str]] = {
+    "present": [
+        "Kann ich mir jetzt Kopfhörer für 300 leisten?",
+        "Was wäre, wenn ich Netflix kündige?",
+        "Was wäre, wenn ich monatlich 50 mehr für Fitness ausgebe?",
+    ],
+    "1y": [
+        "Wann habe ich 20000 zusammen?",
+        "Was wäre, wenn ich Netflix kündige?",
+        "Was wäre, wenn ich monatlich 50 mehr für Fitness ausgebe?",
+    ],
+    "5y": [
+        "Kann ich mir in 5 Jahren ein Auto für 30000 leisten?",
+        "Wann habe ich 20000 zusammen?",
+        "Was wäre, wenn ich Netflix kündige?",
+    ],
+    "10y": [
+        "Kann ich mir in 10 Jahren einen Töff für 8000 leisten?",
+        "Wann habe ich 20000 zusammen?",
+        "Was wäre, wenn ich Netflix kündige?",
+    ],
+}
+
 
 @router.post(
-    "/Ask",
-    tags=["odata"],
-    summary="Answer a question in natural language (OData Action)",
+    "/assistant/ask",
+    tags=["assistant"],
+    summary="Future-Me Chatbot: Frage stellen",
     description=(
-        "Beantwortet genau drei Fragetypen (`affordability`, `what_if`, `time_to_goal`), "
-        "alles andere mit `status=unsupported`. Die Antwort ist nie ein blosses Ja oder Nein, "
-        "sondern `yes` / `tight` / `no_unless` - mit Fehlbetrag, nötigem Monatsbetrag und "
-        "Hebeln aus echten variablen Kategorien.\n\n"
-        "Gerechnet wird deterministisch über `forecast_service` - dieselbe Funktion, die auch "
-        "`GetForecast`/`Simulate` aufrufen. Kein Betrag im Antworttext stammt aus einem "
-        "Sprachmodell; alle werden gegen `facts` geprüft. `interest_applied` ist immer false.\n\n"
-        "Gleiches 409-Verhalten wie GetForecast, wenn kein Saldo verfügbar ist."
+        "Nimmt eine Nutzerfrage entgegen, extrahiert strukturierte Parameter (LLM-Call #1, T3), "
+        "berechnet über forecast_service (Feature #4/T2, T5) und formuliert die Antwort "
+        "(LLM-Call #2, T7) - inkl. automatischem Zahlenabgleich gegen die berechneten `facts` "
+        "(T10) und Fallback auf eine garantiert korrekte Template-Formulierung bei Abweichung.\n\n"
+        "`ASSISTANT_MODE=cached` (T9) beantwortet nur die 5 vorbereiteten Demo-Fragen ohne "
+        "jeden externen API-Call - `forecast_service` rechnet dabei trotzdem echt.\n\n"
+        "**Fehler:** 409 wenn kein Saldo verfügbar ist (gleiches Verhalten wie "
+        "`GET /api/v1/GetForecast`). 504/502, falls einer der beiden LLM-Calls fehlschlägt - "
+        "bewusst kein stiller Fallback, der wie eine normale Antwort aussieht (siehe "
+        "ASSISTANT_STATUS.md, T9)."
     ),
-    response_model=AskEnvelope,
+    response_model=AssistantAskResponse,
 )
-def ask(request: Request, body: AskRequest) -> dict:
+def ask(request: Request, body: AssistantAskRequest) -> AssistantAskResponse:
+    state = request.app.state
     try:
-        result = run_ask(request.app.state, body)
+        return run_ask(
+            body,
+            state.transaction_repository.all(),
+            state.recurring_payments,
+            state.classifications,
+            state.balance_repository,
+            state.conversation_store,
+        )
     except NoBalanceAvailableError as exc:
         raise HTTPException(
             status_code=409,
             detail=f"Kein Saldo verfügbar für {exc.as_of.isoformat()} - bitte Startsaldo manuell eingeben.",
         ) from exc
-
-    return odata_single("Ask", result.model_dump(mode="json"))
+    except AssistantLLMTimeoutError as exc:
+        raise HTTPException(
+            status_code=504,
+            detail=f"{exc.stage} hat zu lange gedauert (> {exc.seconds}s). Bitte erneut versuchen.",
+        ) from exc
+    except AssistantLLMError as exc:
+        raise HTTPException(status_code=502, detail=f"Anfrage an das Sprachmodell fehlgeschlagen: {exc}") from exc
 
 
 @router.get(
-    "/Suggestions",
-    tags=["odata"],
-    summary="Suggested questions for a horizon (OData Function)",
-    description=(
-        "Chips für die Chat-Oberfläche, abhängig vom Horizont. Senkt die Hürde und lenkt auf "
-        "die drei unterstützten Fragetypen. Uses a query parameter rather than the strict "
-        "`Suggestions(horizon='5y')` path syntax, consistent with `GetForecast`."
-    ),
-    response_model=SuggestionsEnvelope,
+    "/assistant/suggestions",
+    tags=["assistant"],
+    summary="Vorschlags-Chips für den gewählten Horizont",
+    description="Drei vorformulierte Fragen passend zum Horizont, als Chips im Chat-UI gedacht.",
+    response_model=SuggestionsResponse,
 )
-def suggestions(horizon: AssistantHorizon = "5y") -> dict:
-    return odata_collection("Suggestions", SUGGESTIONS[horizon])
+def suggestions(horizon: AssistantHorizon = "present") -> SuggestionsResponse:
+    return SuggestionsResponse(horizon=horizon, suggestions=SUGGESTIONS_BY_HORIZON[horizon])

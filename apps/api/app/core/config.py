@@ -44,3 +44,46 @@ OUTLIER_MIN_OCCURRENCES_12M = int(os.environ.get("OUTLIER_MIN_OCCURRENCES_12M", 
 
 # Window used for the median/percentile baseline of variable spending.
 VARIABLE_BASELINE_MONTHS = int(os.environ.get("VARIABLE_BASELINE_MONTHS", "6"))
+
+# --- Future-Me Chatbot (Feature #5) -------------------------------------
+
+# "live": real OpenAI calls. "cached": zero external calls at all - a fixed
+# set of demo questions is recognized by pattern-matching (not an LLM call)
+# and answered with a canned formulation; `forecast_service` still computes
+# real numbers either way, only the *wording* is canned. See
+# ASSISTANT_STATUS.md, T9.
+ASSISTANT_MODE = os.environ.get("ASSISTANT_MODE", "live")
+
+# Read from apps/api/app/.env via docker-compose's `env_file:` (see
+# docker-compose.yml) - never baked into the image, see .dockerignore.
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+
+# Applies to *each* of the two LLM calls (extraction, formulation)
+# individually, not the request as a whole. On timeout the endpoint returns
+# an explicit error telling the user something went wrong - deliberately no
+# silent template fallback that would look like a normal answer (see
+# ASSISTANT_STATUS.md, T9 - this was a specific product decision, not the
+# issue's original wording).
+ASSISTANT_LLM_TIMEOUT_SECONDS = float(os.environ.get("ASSISTANT_LLM_TIMEOUT_SECONDS", "8"))
+
+# Long-horizon (1y/5y/10y) default assumptions - overridable per-request via
+# `assumptions` in the request body. `savings_rate_pct` has no numeric
+# default here: `None` means "compute from history", per the issue.
+SALARY_GROWTH_DEFAULT_PCT = float(os.environ.get("SALARY_GROWTH_DEFAULT_PCT", "1.0"))
+INFLATION_DEFAULT_PCT = float(os.environ.get("INFLATION_DEFAULT_PCT", "1.5"))
+
+# Ab diesem Betrag gilt eine `affordability`-Frage als "grosse Anschaffung"
+# (issue: "Grosse Anschaffung ohne Zahlungsart" löst die Bar/Leasing-
+# Rückfrage aus, T3). Unkalibrierter Startwert, gleiche Kategorie wie
+# OUTLIER_MIN_ABSOLUTE_CHF oben - eine Plausibilitätsgrenze, keine
+# fachlich hergeleitete Zahl.
+LARGE_PURCHASE_THRESHOLD_CHF = float(os.environ.get("LARGE_PURCHASE_THRESHOLD_CHF", "3000"))
+
+# Puffer-Schwelle for the `tight` state: below this many months of variable
+# spending, an otherwise-reachable goal counts as "knapp" instead of "ja".
+# Issue's own "offene Frage": explicitly a starting value pending
+# calibration against real data, not a settled number - see
+# ASSISTANT_STATUS.md.
+TIGHT_BUFFER_MONTHS = float(os.environ.get("TIGHT_BUFFER_MONTHS", "3"))
