@@ -26,6 +26,18 @@ DEFAULT_BUFFER_CHF = float(os.environ.get("DEFAULT_BUFFER_CHF", "0"))
 # calibrated against real data (see issue's "offene Fragen").
 OUTLIER_MEDIAN_MULTIPLIER = float(os.environ.get("OUTLIER_MEDIAN_MULTIPLIER", "3"))
 
+# Additional absolute floor for the multiplier check above - a booking must
+# clear BOTH the multiplier AND this amount to count as an outlier. Without
+# it, high-frequency/wide-variance categories (e.g. "Supermärkte", where lots
+# of small snack purchases pull the median down to a few CHF) flag ordinary
+# larger-than-usual bookings as outliers just because they clear 3x a tiny
+# median - verified against the sample data: without this floor, ~12% of all
+# supermarket bookings (mostly perfectly normal grocery runs) were wrongly
+# excluded from the forecast baseline. CHF 100 is a starting point in the
+# spirit of the issue's own outlier examples (Reisen, Velokauf, Steuern -
+# all inherently >CHF 100), not a calibrated value.
+OUTLIER_MIN_ABSOLUTE_CHF = float(os.environ.get("OUTLIER_MIN_ABSOLUTE_CHF", "100"))
+
 # Minimum number of occurrences in the last 12 months for a category to be
 # treated as "regular" rather than an outlier.
 OUTLIER_MIN_OCCURRENCES_12M = int(os.environ.get("OUTLIER_MIN_OCCURRENCES_12M", "3"))

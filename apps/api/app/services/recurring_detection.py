@@ -57,7 +57,7 @@ def _canonical_merchant_key(merchant: str) -> str:
     "NETFLIX.COM LOS GATOS" / "NETFLIX.COM AMSTERDAM" /
     "NETFLIX.COM 866-579-7172" (shared first token "NETFLIX.COM"), while
     still being distinctive for most merchants. Combined with
-    category_main as part of the group key (`_group_key`) to reduce
+    category_main as part of the group key (`group_key`) to reduce
     false merges from short/generic first tokens (e.g. "M", "BP", "TCS").
 
     Known limitation: two genuinely different merchants that share both
@@ -69,7 +69,10 @@ def _canonical_merchant_key(merchant: str) -> str:
     return merchant.split(" ", 1)[0] if merchant else merchant
 
 
-def _group_key(t: Transaction) -> tuple[str, str | None, str]:
+def group_key(t: Transaction) -> tuple[str, str | None, str]:
+    """Public so T4 (`app/services/classification.py`) can map a
+    transaction back to the RecurringPayment it belongs to, using the
+    exact same grouping logic used to detect it here."""
     return (_canonical_merchant_key(t.merchant), t.category_main, t.flow)
 
 
@@ -146,7 +149,7 @@ def detect_recurring_payments(
     for t in transactions:
         if t.is_transfer:
             continue
-        groups[_group_key(t)].append(t)
+        groups[group_key(t)].append(t)
 
     results: list[RecurringPayment] = []
     for (merchant_key, category_main, flow), group_txs in groups.items():

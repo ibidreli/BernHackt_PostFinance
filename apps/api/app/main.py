@@ -15,6 +15,7 @@ from fastapi import FastAPI, Request
 from app.core.config import CSV_PATH
 from app.data.data_personal import load_raw_transactions
 from app.repositories.transaction_repository import TransactionRepository
+from app.services.classification import classify_transactions
 from app.services.recurring_detection import detect_recurring_payments, detect_salary_day
 
 # T10 will mount the OData forecast routes here, e.g.:
@@ -28,7 +29,9 @@ async def lifespan(app: FastAPI):
     app.state.raw_transactions = raw
     repo = TransactionRepository.from_raw(raw)
     app.state.transaction_repository = repo
-    app.state.recurring_payments = detect_recurring_payments(repo.all())
+    recurring_payments = detect_recurring_payments(repo.all())
+    app.state.recurring_payments = recurring_payments
+    app.state.classifications = classify_transactions(repo.all(), recurring_payments)
     yield
 
 
@@ -76,4 +79,7 @@ def health(request: Request) -> dict:
             Counter(rp.interval for rp in request.app.state.recurring_payments)
         ),
         "salary_day": detect_salary_day(request.app.state.recurring_payments),
+        "topf_counts": dict(
+            Counter(c.topf for c in request.app.state.classifications)
+        ),
     }

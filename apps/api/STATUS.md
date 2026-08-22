@@ -86,7 +86,20 @@ Lebendes Dokument: pro Teilschritt (T0–T11) ein Satz Stand, plus **Bugs** (gef
 
 ## T4 — Drei-Topf-Klassifikation
 
-**Stand:** Noch nicht begonnen.
+**Stand:** Fertig — alle 5303 Transaktionen klassifiziert (446 fix, 4604 variabel, 253 Ausreisser), gegen den echten Datensatz verifiziert.
+
+**Bugs:**
+- **Gefunden & gefixt:** Die naive "Buchung > 3× Kategorie-Median"-Regel aus dem Issue flaggte 237 von 2008 Supermarkt-Buchungen (12 %) fälschlich als Ausreisser, weil viele Kleinstbeträge (Snacks) den Kategorie-Median auf CHF 6 drücken — schon ein normaler CHF-40-Wocheneinkauf lag über der 3×-Schwelle. Fix: zusätzliche absolute Mindestschwelle (`OUTLIER_MIN_ABSOLUTE_CHF`, Default CHF 100), beide Bedingungen müssen erfüllt sein. Reduziert Supermarkt-Ausreisser von 237 auf 1, Gesamt-Ausreisser von 653 auf 253.
+
+**Grenzen:**
+- `OUTLIER_MIN_ABSOLUTE_CHF = 100` ist ein plausibler Startwert (an den Issue-Beispielen Reisen/Velokauf/Steuern orientiert), keine kalibrierte Zahl — wie `OUTLIER_MEDIAN_MULTIPLIER` explizit für die Samstags-Kalibrierung an echten Daten gedacht.
+- Kategorie-Median für die Ausreisser-Prüfung wird einmalig über alle (inkl. potenzieller Ausreisser) Transaktionen berechnet, keine iterative Neuberechnung — bei einer Kategorie mit vielen echten Ausreissern könnte das die eigene Schwelle verzerren.
+- **Konkret beobachtete Folge der T3-Gruppierungs-Grenze:** "PULVER DANIEL & JUDITH" zahlt 5× CHF 950 in klar monatlichem Rhythmus, wird aber wegen der Ersttoken-Gruppierung mit anderen Familienmitgliedern (u. a. "PULVER ELIAS") unter demselben Schlüssel zusammengelegt, verliert dadurch den erkennbaren Rhythmus und landet einzeln bei den Ausreissern statt in Topf 1. Bewusst nicht gefixt (siehe T3-Grenzen), hier nur als reales Beispiel bestätigt.
+- Einige der 31 Topf-1-Merchants sind Zufallstreffer aus der bereits in T3 dokumentierten Kleine-Stichprobe-Grenze (z. B. `AVEC`, `VOLG`, `HOTEL`, `PETER`) — keine neue Baustelle, nur hier sichtbar geworden.
+
+**Erweiterungen:**
+- Iterative/robuste Median-Berechnung (z. B. erst Ausreisser grob entfernen, dann Median neu berechnen).
+- Kategorie-spezifische statt globaler Schwellenwerte, falls sich einzelne Kategorien nach Kalibrierung als weiterhin schlecht getroffen erweisen.
 
 ---
 
