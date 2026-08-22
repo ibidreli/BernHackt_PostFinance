@@ -10,11 +10,13 @@ Diese Datei ist die kompakte Referenz für die drei Endpunkte. Für Details zu B
 - **Interaktiv testen:** `/docs` (Swagger UI) nach `docker compose up` — siehe [README.md](../../README.md) für Run-Anleitung.
 - **CSDL-Dokument:** `GET /api/v1/$metadata`.
 
-## Die drei Endpunkte
+## OData-Endpunkte
 
 | Endpunkt | HTTP | OData-Konzept | Zweck |
 |---|---|---|---|
 | `/api/v1/RecurringPayments` | GET | EntitySet | Liste erkannter wiederkehrender Zahlungen, mit vollen Query-Optionen |
+| `/api/v1/GraphMonths` | GET | EntitySet-artig mit OData-Query | Verfügbare Monate für den Kategorien-Explorer (max. 12) |
+| `/api/v1/GraphNodes` | GET | EntitySet-artig mit OData-Query | Flache, filterbare Graph-Knoten für Drilldown (Monat/Flow/Kategorie/Merchant) |
 | `/api/v1/GetForecast` | GET | Function | Basisprognose ohne Szenario |
 | `/api/v1/Simulate` | POST | Action | Prognose mit Eingriffen, Baseline + Szenario in einer Antwort |
 
@@ -39,6 +41,92 @@ curl "http://localhost:8000/api/v1/RecurringPayments?\$filter=is_active%20eq%20t
 `$select` projiziert auf ein Feld-Subset — die Response hat dann kein festes Schema mehr, deshalb ist dieser Endpunkt in Swagger bewusst nicht strikt typisiert (im Gegensatz zu den anderen beiden).
 
 **`amount_history` ist standardmässig ausgeklammert** (ohne explizites `$select`), da es bei manchen Merchants sehr lang wird — gemessen: 88 % der Payload einer 10-Item-Liste war `amount_history` eines einzelnen Merchants mit 196 Verlaufseinträgen. Explizit abrufbar per `$select=merchant,amount_history`.
+
+---
+
+### `GET /api/v1/GraphMonths`
+
+Liefert die verfügbaren Monate als OData-EntitySet (`month`, `is_default`, `sort_key`), inkl. `$filter`/`$select`/`$orderby`/`$top`/`$skip`/`$count`.
+
+```bash
+curl "http://localhost:8000/api/v1/GraphMonths?\$orderby=sort_key&\$select=month,is_default"
+```
+
+---
+
+### `GET /api/v1/GraphNodes`
+
+Flache Knotenliste (statt ein grosser Baum), optimiert für Drilldown per Folge-Request.
+
+Query-Parameter:
+
+- `month=YYYY-MM` (default: letzter verfügbarer Monat)
+- `mode=absolute|delta`
+- `flow=expense|income|both`
+- `include_transactions=true|false` (default `false`, hält Payload klein)
+- `max_level=0..3` (optional, z. B. nur bis Merchant-Ebene)
+
+Zusätzlich volle OData-Query-Optionen (`$filter`, `$select`, `$orderby`, `$top`, `$skip`, `$count`).
+
+**Beispiele**
+
+Alle Kategorie-Knoten eines Monats:
+```bash
+curl "http://localhost:8000/api/v1/GraphNodes?month=2026-08&flow=expense&max_level=1&\$filter=node_type%20eq%20'category'"
+```
+
+Nur Merchants einer Kategorie (Drilldown):
+```bash
+curl "http://localhost:8000/api/v1/GraphNodes?month=2026-08&flow=expense&\$filter=node_type%20eq%20'merchant'%20and%20category_main%20eq%20'Einkaufen'%20and%20category_sub%20eq%20'Supermärkte'&\$orderby=amount_chf%20desc&\$top=20"
+```
+
+Nur Transaktions-Details eines Merchants:
+```bash
+curl "http://localhost:8000/api/v1/GraphNodes?month=2026-08&flow=expense&include_transactions=true&\$filter=node_type%20eq%20'transaction'%20and%20merchant%20eq%20'MIGROS'&\$select=tx_id,tx_date,tx_amount_chf,tx_original_description"
+```
+
+---
+
+### `GET /api/v1/GraphMonths`
+
+Liefert die verfügbaren Monate als OData-EntitySet (`month`, `is_default`, `sort_key`), inkl. `$filter`/`$select`/`$orderby`/`$top`/`$skip`/`$count`.
+
+```bash
+curl "http://localhost:8000/api/v1/GraphMonths?\$orderby=sort_key&\$select=month,is_default"
+```
+
+---
+
+### `GET /api/v1/GraphNodes`
+
+Flache Knotenliste (statt ein grosser Baum), optimiert für Drilldown per Folge-Request.
+
+Query-Parameter:
+
+- `month=YYYY-MM` (default: letzter verfügbarer Monat)
+- `mode=absolute|delta`
+- `flow=expense|income|both`
+- `include_transactions=true|false` (default `false`, hält Payload klein)
+- `max_level=0..3` (optional, z. B. nur bis Merchant-Ebene)
+
+Zusätzlich volle OData-Query-Optionen (`$filter`, `$select`, `$orderby`, `$top`, `$skip`, `$count`).
+
+**Beispiele**
+
+Alle Kategorie-Knoten eines Monats:
+```bash
+curl "http://localhost:8000/api/v1/GraphNodes?month=2026-08&flow=expense&max_level=1&\$filter=node_type%20eq%20'category'"
+```
+
+Nur Merchants einer Kategorie (Drilldown):
+```bash
+curl "http://localhost:8000/api/v1/GraphNodes?month=2026-08&flow=expense&\$filter=node_type%20eq%20'merchant'%20and%20category_main%20eq%20'Einkaufen'%20and%20category_sub%20eq%20'Supermärkte'&\$orderby=amount_chf%20desc&\$top=20"
+```
+
+Nur Transaktions-Details eines Merchants:
+```bash
+curl "http://localhost:8000/api/v1/GraphNodes?month=2026-08&flow=expense&include_transactions=true&\$filter=node_type%20eq%20'transaction'%20and%20merchant%20eq%20'MIGROS'&\$select=tx_id,tx_date,tx_amount_chf,tx_original_description"
+```
 
 ---
 

@@ -13,6 +13,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response
 
 from app.api.routes.forecast import router as forecast_router
+from app.api.routes.graph_odata import router as graph_odata_router
+from app.api.routes.graph import router as graph_router
 from app.core.config import CSV_PATH
 from app.data.data_personal import load_raw_transactions
 from app.odata.envelope import ODataVersionMiddleware, install_odata_error_handlers
@@ -49,13 +51,14 @@ app = FastAPI(
 )
 app.add_middleware(ODataVersionMiddleware)
 install_odata_error_handlers(app)
+app.include_router(graph_odata_router, prefix="/api/v1")
+app.include_router(graph_router, prefix="/api/v1")
 app.include_router(forecast_router, prefix="/api/v1")
 
 
 @app.get("/api/v1/$metadata", tags=["odata"], include_in_schema=False)
 def odata_metadata() -> Response:
-    """CSDL service document (T9). The three actual resources
-    (RecurringPayments/GetForecast/Simulate) are wired in T10."""
+    """CSDL service document for all exposed OData resources."""
     return Response(content=METADATA_XML, media_type="application/xml")
 
 

@@ -1,11 +1,9 @@
 """Static OData v4 `$metadata` CSDL document (T9).
 
-Static, not generated from the Pydantic schemas: the service exposes
-exactly three fixed resources (`RecurringPayments`, `GetForecast`,
-`Simulate`, see `app/api/routes/forecast.py`, T10), so hand-writing the
-CSDL once is simpler and more transparent than building a schema-to-CSDL
-generator for a hackathon timeline. Keep this in sync with
-`app/schemas/forecast.py` by hand if fields change.
+Static, not generated from the Pydantic schemas: hand-writing the CSDL
+once is simpler and more transparent than building a schema-to-CSDL
+generator for a hackathon timeline. Keep this in sync with route/schema
+changes by hand.
 
 `RecurringPayment.recurring_id` (the entity key) doesn't exist as a
 stored field - it's computed by `recurring_payment_id()` (T3) from
@@ -34,6 +32,54 @@ METADATA_XML = """<?xml version="1.0" encoding="UTF-8"?>
         <Property Name="first_seen" Type="Edm.Date" Nullable="false"/>
         <Property Name="last_seen" Type="Edm.Date" Nullable="false"/>
         <Property Name="is_active" Type="Edm.Boolean" Nullable="false"/>
+      </EntityType>
+
+      <EntityType Name="GraphNode">
+        <Key><PropertyRef Name="node_id"/></Key>
+        <Property Name="node_id" Type="Edm.String" Nullable="false"/>
+        <Property Name="parent_id" Type="Edm.String"/>
+        <Property Name="month" Type="Edm.String" Nullable="false"/>
+        <Property Name="mode" Type="Edm.String" Nullable="false"/>
+        <Property Name="node_type" Type="Edm.String" Nullable="false"/>
+        <Property Name="level" Type="Edm.Int32" Nullable="false"/>
+        <Property Name="label" Type="Edm.String" Nullable="false"/>
+        <Property Name="flow" Type="Edm.String"/>
+        <Property Name="amount_chf" Type="Edm.Double" Nullable="false"/>
+        <Property Name="transaction_count" Type="Edm.Int32" Nullable="false"/>
+        <Property Name="rank" Type="Edm.Int32"/>
+        <Property Name="merchant_count" Type="Edm.Int32"/>
+        <Property Name="category_main" Type="Edm.String"/>
+        <Property Name="category_sub" Type="Edm.String"/>
+        <Property Name="merchant" Type="Edm.String"/>
+        <Property Name="has_children" Type="Edm.Boolean" Nullable="false"/>
+        <Property Name="delta_baseline_median_chf" Type="Edm.Double"/>
+        <Property Name="delta_diff_chf" Type="Edm.Double"/>
+        <Property Name="delta_diff_pct" Type="Edm.Double"/>
+        <Property Name="delta_direction" Type="Edm.String"/>
+        <Property Name="summary_child_count" Type="Edm.Int32"/>
+        <Property Name="summary_transaction_count" Type="Edm.Int32"/>
+        <Property Name="summary_total_amount_chf" Type="Edm.Double"/>
+        <Property Name="summary_avg_amount_chf" Type="Edm.Double"/>
+        <Property Name="tx_id" Type="Edm.String"/>
+        <Property Name="tx_date" Type="Edm.String"/>
+        <Property Name="tx_value_date" Type="Edm.String"/>
+        <Property Name="tx_merchant" Type="Edm.String"/>
+        <Property Name="tx_merchant_canonical" Type="Edm.String"/>
+        <Property Name="tx_original_description" Type="Edm.String"/>
+        <Property Name="tx_amount_chf" Type="Edm.Double"/>
+        <Property Name="tx_flow" Type="Edm.String"/>
+        <Property Name="tx_category_main" Type="Edm.String"/>
+        <Property Name="tx_category_sub" Type="Edm.String"/>
+        <Property Name="tx_original_amount" Type="Edm.Double"/>
+        <Property Name="tx_original_currency" Type="Edm.String"/>
+        <Property Name="tx_status" Type="Edm.String"/>
+      </EntityType>
+
+      <EntityType Name="GraphMonth">
+        <Key><PropertyRef Name="month"/></Key>
+        <Property Name="month" Type="Edm.String" Nullable="false"/>
+        <Property Name="is_default" Type="Edm.Boolean" Nullable="false"/>
+        <Property Name="sort_key" Type="Edm.Int32" Nullable="false"/>
       </EntityType>
 
       <ComplexType Name="NextSalary">
@@ -129,6 +175,8 @@ METADATA_XML = """<?xml version="1.0" encoding="UTF-8"?>
 
       <EntityContainer Name="Container">
         <EntitySet Name="RecurringPayments" EntityType="Forecast.RecurringPayment"/>
+        <EntitySet Name="GraphNodes" EntityType="Forecast.GraphNode"/>
+        <EntitySet Name="GraphMonths" EntityType="Forecast.GraphMonth"/>
         <FunctionImport Name="GetForecast" Function="Forecast.GetForecast"/>
         <ActionImport Name="Simulate" Action="Forecast.Simulate"/>
       </EntityContainer>
