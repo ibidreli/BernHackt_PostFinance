@@ -29,31 +29,26 @@ from pathlib import Path
 from typing import Literal, NamedTuple
 
 import openai
-from openai import OpenAI
 from pydantic import BaseModel, Field
 
-from app.core.config import (
-    ASSISTANT_LLM_TIMEOUT_SECONDS,
-    LARGE_PURCHASE_THRESHOLD_CHF,
-    OPENAI_API_KEY,
-    OPENAI_MODEL,
-)
+from app.core.config import ASSISTANT_LLM_TIMEOUT_SECONDS, LARGE_PURCHASE_THRESHOLD_CHF, OPENAI_MODEL
 from app.schemas.assistant import AssistantHorizon, Clarification
+from app.services.llm_client import AssistantLLMError, AssistantLLMTimeoutError, get_client
+
+# Re-exported so existing `from app.services.intent_service import
+# AssistantLLMError` (etc.) keeps working after these moved to
+# `llm_client.py` (T7 - formulation needs the exact same types).
+__all__ = [
+    "AssistantLLMError",
+    "AssistantLLMTimeoutError",
+    "ExtractedIntent",
+    "extract_intent",
+    "validate_extraction",
+    "apply_clarification_answer",
+]
 
 _PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "intent_extraction_v1.md"
 _SYSTEM_PROMPT = _PROMPT_PATH.read_text(encoding="utf-8")
-
-
-class AssistantLLMError(Exception):
-    """Base class for any LLM-call failure in this feature (extraction
-    here in T3, formulation in T10). The API layer (T11) turns this into
-    an explicit error response for the user - never a silent fallback."""
-
-
-class AssistantLLMTimeoutError(AssistantLLMError):
-    def __init__(self, seconds: float):
-        self.seconds = seconds
-        super().__init__(f"LLM-Call hat das Timeout von {seconds}s überschritten.")
 
 
 # --- ExtractedIntent: LLM Structured Output ------------------------------
@@ -95,15 +90,6 @@ class ExtractedIntent(BaseModel):
 
 # --- LLM call ------------------------------------------------------------
 
-_client: OpenAI | None = None
-
-
-def _get_client() -> OpenAI:
-    global _client
-    if _client is None:
-        _client = OpenAI(api_key=OPENAI_API_KEY)
-    return _client
-
 
 def extract_intent(
     message: str,
@@ -124,7 +110,7 @@ def extract_intent(
     user_content += f"Frage: {message}"
 
     try:
-        completion = _get_client().beta.chat.completions.parse(
+        completion = get_client().beta.chat.completions.parse(
             model=OPENAI_MODEL,
             messages=[
                 {"role": "system", "content": _SYSTEM_PROMPT},

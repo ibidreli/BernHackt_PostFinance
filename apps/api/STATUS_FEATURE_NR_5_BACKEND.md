@@ -187,3 +187,36 @@ Weitere Annahmen siehe T0–T13 unten, jeweils im Kontext.
 
 **Erweiterungen:**
 - Aktuell keine.
+
+---
+
+## T7 — services/assistant_service.py (Orchestrierung inkl. Folgefragen)
+
+**Stand:** Fertig — vollständiger End-to-End-Test, komplett mit echten OpenAI-Calls (kein Mock), inkl. Zwei-Turn-Rückfrage-Flow, echter Folgefrage über Conversation-State, `unsupported` ohne LLM-Call #2, und allen drei Intents.
+
+**Vorgezogen aus T8/T10, weil T7 sonst nicht end-to-end testbar gewesen wäre:** Der Formulierungs-Prompt (`prompts/answer_formulation_v1.md`) und `services/formulation_service.py` (LLM-Call #2) wurden hier gebaut, nicht erst in T8 - exakt das gleiche Vorgehen wie bei T3, wo der Extraktions-Prompt sofort mitgebaut wurde. T8 wird diesen Prompt daher eher review/polish sein als Neubau. `services/llm_client.py` neu ausgegliedert (OpenAI-Client + `AssistantLLMError`/`AssistantLLMTimeoutError`), damit Extraktion und Formulierung dieselbe Timeout-/Fehlerbehandlung teilen, statt sie zu duplizieren - `intent_service.py` re-exportiert die Typen für Abwärtskompatibilität.
+
+**Bugs (drei gefunden und behoben, alle live reproduziert und danach live verifiziert):**
+
+1. **Falsche Handlungsrichtung bei `what_if`.** Eine Netflix-*Kündigung* (positiver Effekt) wurde vom Formulierungs-Modell als *"Erhöhung deiner Netflix-Ausgaben"* beschrieben - die Zahlen stimmten, die beschriebene Handlung war falsch. Ursache: das Modell musste die Richtung aus dem Vorzeichen von `impact_monthly_chf` erraten, bekam aber nie gesagt, was tatsächlich passiert (Kündigen vs. Anpassen vs. Hinzufügen). Behoben mit einem neuen, deterministisch in T7 gebauten Feld `adjustment_description` (z. B. `"Netflix" wird gekündigt und entfällt komplett.`), das die Handlung fest vorgibt statt sie zu erraten.
+2. **`buffer_after_months` als CHF-Betrag missverstanden.** Bei `status=tight` formulierte das Modell *"Der Restpuffer beträgt nur CHF 1"* - der Wert (1.1) ist aber in **Monaten**. Die Zahl selbst stand korrekt in `facts` (eine reine "steht die Zahl irgendwo in facts"-Prüfung hätte das NICHT gefangen, siehe unten). Behoben durch explizite Einheiten-Klarstellung im Prompt.
+3. **Interne Kategorie-Schreibweise `"Hauptkategorie // Unterkategorie"`** (Feature-4-API-Konvention) landete wörtlich im Chat-Text ("im Bereich Freizeit // Gastronomie"). Behoben durch eine Prompt-Anweisung, das natürlich umzuschreiben - die API-Konvention selbst bleibt unverändert (Feature-4-Code nicht angefasst).
+
+**Wichtiger Fund für T10 (Zahlenabgleich), noch nicht selbst gebaut:** Bug #2 oben zeigt konkret, dass eine reine Zahlen-Existenz-Prüfung ("kommt diese Zahl in `facts` vor?") nicht ausreicht - `1` bzw. `1.1` stand ja tatsächlich in `facts.buffer_after_months`, nur mit der falschen Einheit verknüpft. T10 muss das berücksichtigen, wenn es die automatische Verifikation baut.
+
+**Echter Fund, mit dir abgestimmt und behoben:** Die Kategorie **"Finanzen // Steuern"** tauchte als einer der Top-3-Hebel auf ("könntest du im Bereich Steuern CHF 275 sparen") - inhaltlich fragwürdig, da Steuern kein freiwillig kürzbarer Posten sind. Auf deine Entscheidung hin ("gezielt ausschliessen") in `answer_service.compute_levers` (T5) behoben: `_NON_DISCRETIONARY_CATEGORY_KEYWORDS = ("steuer",)`, ein schmales, benanntes, begründetes Keyword-basiertes Ausschlusskriterium (nicht ein einzelner hartcodierter Kategoriename, nicht eine breite "was ist diskretionär"-Heuristik) - dokumentiert als bewusste Ausnahme von der sonst durchgehenden "aus der Historie erkannt, nicht hartcodiert"-Linie, weil das datengetriebene Ergebnis hier aktiv irreführend gewesen wäre. Live verifiziert: "Steuern" ist raus, "Sonstige Ausgaben" rückt als dritter Hebel nach (Kategorie-Label selbst ist etwas unspezifisch, aber inhaltlich nicht falsch - im Gegensatz zu Steuern).
+
+**Beobachtung, keine Fehlfunktion:** Bei Folgefragen kann das Extraktions-Modell zwischen Läufen leicht unterschiedlich interpretieren - z. B. wurde "Und wenn ich 2 Jahre länger warte?" nach einer `affordability`-Frage in einem Testlauf als `affordability` (Horizont 5y) und in einem anderen als `time_to_goal` (Horizont 1y) klassifiziert. Beide Interpretationen sind für sich genommen plausibel, das System bleibt in beiden Fällen intern konsistent (Chart-Typ folgt korrekt dem jeweiligen Intent). Keine Reparatur nötig, aber erwähnenswert für die Live-Demo: dieselbe Folgefrage kann leicht unterschiedlich beantwortet werden.
+
+**Design-Entscheidungen:**
+- **`needs_clarification` und `unsupported` rufen NIE LLM-Call #2 auf** - die Rückfrage selbst bzw. die feste Ablehnungs-Antwort sind bereits der komplette Antworttext, code-generiert. Spart einen LLM-Call und hält diese beiden Zustände 100 % deterministisch.
+- **Rückfrage-Antworten laufen nie durch `validate_extraction` ein zweites Mal** (Issue: max. eine Rückfrage pro Anfrage) - fehlt danach immer noch ein Betrag, wird direkt `unsupported` zurückgegeben statt eine zweite Rückfrage zu starten.
+- **`conversation_store.clear()` bei `unsupported`**, damit eine völlig andere Folgefrage nicht versehentlich an einen alten, jetzt irrelevanten Zustand anknüpft.
+- **State wird auch bei Rückfrage-Auflösung neu gespeichert** (mit `pending_clarification=None`), nicht gelöscht - eine ECHTE Folgefrage nach einer aufgelösten Rückfrage muss weiterhin funktionieren (live verifiziert: Schritt 5 im Test).
+
+**Grenzen:**
+- Kein Retry bei einem gescheiterten LLM-Call #2, nachdem LLM-Call #1 schon gelaufen ist - ein Formulierungs-Fehler verwirft die bereits fertige Berechnung komplett (kein Zwischenspeichern/Fortsetzen). Für eine Demo mit einzelnen Anfragen akzeptabel.
+- `_describe_adjustment` deckt nur die 4 bekannten Adjustment-Typen ab, kein Fallback-Text falls `adjustment_kind` aus irgendeinem Grund doch `None` erreicht (sollte durch T3s Validierung ausgeschlossen sein, aber nicht defensiv doppelt abgesichert).
+
+**Erweiterungen:**
+- `ask()` könnte den `source`-Wert schon jetzt differenzieren, aktuell immer `"live"` - wird erst mit T9 (Cache-Modus) tatsächlich `"cached"` liefern können.

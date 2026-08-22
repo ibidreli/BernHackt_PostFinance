@@ -141,14 +141,35 @@ def _format_category(main: str | None, sub: str | None) -> str | None:
     return main or sub
 
 
+# Categories excluded from levers even if classified as Topf-2/variable -
+# not voluntarily reducible the way a restaurant budget is, so
+# recommending "sparen bei X" would be bad advice, not a real lever.
+# Found via live-testing T7's formulation output ("könntest du im
+# Bereich Steuern CHF 275 sparen" - real, live-observed nonsense), fixed
+# here with your explicit go-ahead rather than silently: keyword-based,
+# not a single hardcoded category name, and deliberately narrow (one
+# keyword) rather than a broad "guess what's discretionary" heuristic -
+# consistent with the project's general preference for data-driven
+# classification (see classification.py) with named, justified
+# exceptions only where the data-driven result is actively misleading.
+_NON_DISCRETIONARY_CATEGORY_KEYWORDS = ("steuer",)
+
+
+def _is_discretionary_category(main: str | None, sub: str | None) -> bool:
+    combined = f"{main or ''} {sub or ''}".lower()
+    return not any(keyword in combined for keyword in _NON_DISCRETIONARY_CATEGORY_KEYWORDS)
+
+
 def compute_levers(classifications: list[Classification], as_of: date, top_n: int = 3) -> list[Lever]:
     """Top-N variable (Topf-2 only, issue: "'spar bei der Krankenkasse'
     ist kein Rat") categories by monthly average, `potential_chf` =
     median minus the category's actual historical monthly minimum in the
-    same window (your decision over the issue's own "pauschal 50%")."""
+    same window (your decision over the issue's own "pauschal 50%").
+    Excludes non-discretionary categories (see `_NON_DISCRETIONARY_CATEGORY_KEYWORDS`)."""
     variable_txs = [c.transaction for c in classifications if c.topf == "variable"]
     stats = monthly_category_stats(variable_txs, as_of=as_of, months=VARIABLE_BASELINE_MONTHS)
-    ranked = sorted(stats, key=lambda s: s.median_chf, reverse=True)[:top_n]
+    eligible = [s for s in stats if _is_discretionary_category(s.category_main, s.category_sub)]
+    ranked = sorted(eligible, key=lambda s: s.median_chf, reverse=True)[:top_n]
     return [
         Lever(
             category=_format_category(s.category_main, s.category_sub) or "Unbekannt",
