@@ -296,3 +296,24 @@ Weitere Annahmen siehe T0–T13 unten, jeweils im Kontext.
 
 **Erweiterungen:**
 - Die gleiche typgebundene Prüfung liesse sich leicht auf weitere Einheiten ausweiten (z. B. Prozent-Angaben), falls künftige Antworttexte das brauchen.
+
+---
+
+## T11 — api/routes/assistant.py (beide Endpunkte)
+
+**Stand:** Fertig — `POST /api/v1/assistant/ask` und `GET /api/v1/assistant/suggestions`, erstmals über echtes HTTP erreichbar (nicht mehr nur Python-Funktionsaufrufe wie in T3-T10). Live getestet: beide Endpunkte per `curl`, 422-Validierung, `unsupported`, kompletter Rückfrage-Flow über zwei echte HTTP-Requests mit persistentem Conversation-State, OpenAPI-Schema-Korrektheit (inkl. der Chart-Discriminated-Union), und — als härtester Beweis — ein komplett separater Container **ohne jeden `OPENAI_API_KEY`** im `cached`-Modus, der über echtes HTTP eine vollständige, korrekte Antwort liefert.
+
+**Bugs:** Ein Infrastruktur-Fund (kein Code-Bug): Ein erster Test des `cached`-Containers per `docker run` schlug mit `404 Not Found` fehl - Ursache war ein **veraltetes Docker-Image**. Der Dev-Container läuft mit Live-Reload über ein gemountetes Volume, ein eigenständiger `docker run` nutzt aber das zuletzt mit `docker compose build` gebaute Image, das T11s neue Route noch nicht enthielt. Behoben durch `docker compose build api` vor dem Test - danach lief der Beweis sauber durch. Für die Doku festgehalten, damit das nicht als Verwirrung durchgeht, falls es nochmal auftritt.
+
+**Design-Entscheidungen:**
+- **REST-Contract wörtlich nach Issue**, wie zu Beginn des Features entschieden - eigener Router, nicht Teil von Feature 4s OData-Subset. Läuft trotzdem unter demselben `/api/v1`-Prefix wie Feature 4 (seit deiner Umstellung von `/odata`).
+- **Fehler-Envelope wird von Feature 4 wiederverwendet, nicht neu erfunden.** `install_odata_error_handlers` (T9, Feature 4) ist service-weit in `main.py` installiert und fängt `HTTPException`/`RequestValidationError` service-weit ab - meine `HTTPException(...)`-Aufrufe hier kommen automatisch im selben `{"error": {"code","message"}}`-Format raus wie bei `/odata/...`. Bewusst genutzt statt eines zweiten Fehlerformats nur für diesen Router - ein konsistentes Format über die ganze API ist besser als zwei.
+- **Timeout/LLM-Fehler werden zu 504/502**, nicht generisch 500 - nutzt `AssistantLLMTimeoutError.stage` (T9) für eine präzise Meldung, welcher der beiden LLM-Calls betroffen war.
+- **`GET /suggestions`** liefert bewusst natürliche, pro Horizont variierte Vorschläge statt stur alle 5 T9-Cache-Fragen zu wörtlich zu spiegeln - die meisten Einträge SIND live-verifizierte Cache-Treffer, aber `suggestions` ist als allgemeiner UX-Helfer für den `live`-Modus gedacht, nicht als Cache-Vertrag. Ein nicht-gecachter Chip-Klick im `cached`-Modus degradiert sauber (listet die echten 5 Fragen, siehe T9), stürzt nicht ab.
+
+**Grenzen:**
+- Der 409-Pfad ("Kein Saldo vorhanden") wurde hier nicht eigenständig über echtes HTTP erneut getriggert - `AssistantAskRequest` hat bewusst kein `as_of`-Feld (Issue-Contract), daher lässt sich der Fall über die öffentliche API praktisch nicht natürlich auslösen. Der Route-Code ist aber identisch zum bereits ausführlich getesteten Feature-4-Muster (`app/api/routes/forecast.py::_no_balance_error`), verlässt sich auf dessen Testabdeckung.
+- Keine Rate-Begrenzung oder Request-Grössenbeschränkung über Pydantic hinaus (schon vorhanden: `message` max. 1000 Zeichen, T1) - für eine Hackathon-Demo ausreichend.
+
+**Erweiterungen:**
+- `GET /suggestions` könnte künftig `ASSISTANT_MODE` selbst abfragen und im `cached`-Modus automatisch nur die 5 garantiert funktionierenden Fragen zeigen (in T9 als Idee vorgemerkt) - aktuell macht das niemand automatisch, ein Frontend müsste das selbst wissen oder den Nutzer im `cached`-Fall entsprechend hinweisen.

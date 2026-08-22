@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 
+from app.api.routes.assistant import router as assistant_router
 from app.api.routes.forecast import router as forecast_router
 from app.core.config import ASSISTANT_MODE, CSV_PATH, OPENAI_API_KEY
 from app.data.data_personal import load_raw_transactions
@@ -68,6 +69,7 @@ app = FastAPI(
 app.add_middleware(ODataVersionMiddleware)
 install_odata_error_handlers(app)
 app.include_router(forecast_router, prefix="/api/v1")
+app.include_router(assistant_router, prefix="/api/v1")
 
 
 @app.get("/api/v1/$metadata", tags=["odata"], include_in_schema=False)
