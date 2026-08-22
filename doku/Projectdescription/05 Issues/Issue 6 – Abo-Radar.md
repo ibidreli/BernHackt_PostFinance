@@ -16,7 +16,7 @@ API laut Issue: `GET /api/v1/subscriptions`, ein Endpunkt für alles.
 
 ## Umsetzungsstand
 
-Backend implementiert, aber **uncommitted auf `main`** ([[Projektstatus]]): [[Subscription-Service]] mit Statuslogik (dokumentierte Präzedenz, CV-Schwelle 10 %), 12-Monats-Grid, Kennzahlen und Fixkostentag. Abweichung: Endpunkt als OData-Function `GET /odata/GetSubscriptions` statt `/api/v1/subscriptions` (konsistent mit dem [[OData-Layer]]); weitere dokumentierte Abweichungen im Schema. Frontend fehlt noch komplett.
+Backend implementiert, aber **uncommitted auf `main`** ([[Projektstatus]]): [[Subscription-Service]] mit Statuslogik (dokumentierte Präzedenz, CV-Schwelle 10 %), 12-Monats-Grid, Kennzahlen und Fixkostentag. Abweichung: Endpunkt als OData-Function `GET /api/v1/GetSubscriptions` statt schlichtem REST `/api/v1/subscriptions` (konsistent mit dem [[OData-Layer]]); weitere dokumentierte Abweichungen im Schema. Frontend fehlt noch komplett.
 
 ## Offene Fragen aus dem Issue
 

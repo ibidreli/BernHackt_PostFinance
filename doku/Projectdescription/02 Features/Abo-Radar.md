@@ -33,4 +33,4 @@ Balken = Zahlung erfolgte; Farbwechsel = Preisänderung; frühes Ende = weggefal
 
 ## Status
 
-Backend ist implementiert, liegt aber **uncommitted auf `main`**: `app/api/routes/subscriptions.py`, `app/schemas/subscription.py`, `app/services/subscription_service.py` plus Erweiterungen in `main.py` und `odata/metadata.py`. Abweichend vom Issue-Contract (`GET /api/v1/subscriptions`) ist der Endpunkt als OData-Function **`GET /odata/GetSubscriptions`** umgesetzt und liefert die ganze Seite (Liste + Detail-Buchungen + Kopfzeilen-KPIs) in einem Request. Frontend existiert noch nicht.
+Backend ist implementiert, liegt aber **uncommitted auf `main`**: `app/api/routes/subscriptions.py`, `app/schemas/subscription.py`, `app/services/subscription_service.py` plus Erweiterungen in `main.py` und `odata/metadata.py`. Abweichend vom Issue-Contract (`GET /api/v1/subscriptions`) ist der Endpunkt als OData-Function **`GET /api/v1/GetSubscriptions`** umgesetzt und liefert die ganze Seite (Liste + Detail-Buchungen + Kopfzeilen-KPIs) in einem Request. Frontend existiert noch nicht.

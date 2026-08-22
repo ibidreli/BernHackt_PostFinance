@@ -5,7 +5,7 @@ status: in-arbeit
 
 # Subscription-Service
 
-Code: `app/services/subscription_service.py` (~325 Zeilen, **uncommitted**) · Schemas: `app/schemas/subscription.py` · Route: `app/api/routes/subscriptions.py` (`GET /odata/GetSubscriptions`) · Feature: [[Abo-Radar]]
+Code: `app/services/subscription_service.py` (~325 Zeilen, **uncommitted**) · Schemas: `app/schemas/subscription.py` · Route: `app/api/routes/subscriptions.py` (`GET /api/v1/GetSubscriptions`) · Feature: [[Abo-Radar]]
 
 ## Ansatz
 

@@ -128,7 +128,7 @@ class ForecastResponse(BaseModel):
 
 class CancelRecurring(BaseModel):
     """Preset: "Netflix kündigen". `recurring_id` values come from
-    `GET /odata/RecurringPayments` (field `recurring_id`, not `merchant` -
+    `GET /api/v1/RecurringPayments` (field `recurring_id`, not `merchant` -
     merchant strings aren't unique, see STATUS.md T7)."""
 
     type: Literal["cancel_recurring"] = "cancel_recurring"
@@ -215,12 +215,12 @@ class SimulateResponse(BaseModel):
 
 
 class ForecastEnvelope(ForecastResponse):
-    """`GET /odata/GetForecast` response body."""
+    """`GET /api/v1/GetForecast` response body."""
 
     odata_context: str = Field(alias="@odata.context")
 
 
 class SimulateEnvelope(SimulateResponse):
-    """`POST /odata/Simulate` response body."""
+    """`POST /api/v1/Simulate` response body."""
 
     odata_context: str = Field(alias="@odata.context")
