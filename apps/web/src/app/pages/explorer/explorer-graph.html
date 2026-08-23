@@ -13,28 +13,33 @@
     (click)="zoomOut()"
   />
 
-  @for (node of nodes(); track node.id) {
-    <circle
-      class="node"
-      [attr.cx]="node.x"
-      [attr.cy]="node.y"
-      [attr.r]="node.r"
-      [attr.fill]="node.fill"
-      [attr.fill-opacity]="node.opacity"
-      [class.selected]="node.id === selectedId()"
-      [class.leaf]="node.isLeaf"
-      role="treeitem"
-      tabindex="0"
-      [attr.aria-label]="node.label"
-      (click)="activate(node); $event.stopPropagation()"
-      (keydown.enter)="activate(node)"
-    />
-  }
+  <!-- All circles sit in scene coordinates; the camera group alone
+       animates the zoom, so the scene scales as one rigid picture. -->
+  <g class="camera" [style.transform]="cameraTransform()">
+    @for (node of nodes(); track node.id) {
+      <circle
+        class="node"
+        [attr.cx]="node.x"
+        [attr.cy]="node.y"
+        [attr.r]="node.r"
+        [attr.fill]="node.fill"
+        [attr.fill-opacity]="node.opacity"
+        [class.selected]="node.id === selectedId()"
+        [class.leaf]="node.isLeaf"
+        role="treeitem"
+        tabindex="0"
+        [attr.aria-label]="node.label"
+        (click)="activate(node); $event.stopPropagation()"
+        (keydown.enter)="activate(node)"
+      />
+    }
+  </g>
 
-  <!-- Labels last so no circle paints over them. -->
+  <!-- Labels last so no circle paints over them - and outside the
+       camera, in screen space, so text never scales with the zoom. -->
   @for (node of nodes(); track node.id) {
     @if (node.showLabel) {
-      <g class="node label" [attr.transform]="'translate(' + node.x + ',' + node.labelY + ')'">
+      <g class="node label" [attr.transform]="'translate(' + node.labelX + ',' + node.labelY + ')'">
         <text
           text-anchor="middle"
           [attr.dy]="node.showAmount ? '-0.1em' : '0.35em'"

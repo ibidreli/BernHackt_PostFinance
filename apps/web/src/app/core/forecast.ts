@@ -104,7 +104,7 @@ const api = '/api/v1';
  */
 @Service()
 export class Forecast {
-  readonly horizon = signal<Horizon>('next_salary');
+  readonly horizon = signal<Horizon>('30d');
   readonly adjustments = signal<Adjustment[]>([]);
 
   private readonly data = httpResource<ForecastResult | SimulateResult>(() => {

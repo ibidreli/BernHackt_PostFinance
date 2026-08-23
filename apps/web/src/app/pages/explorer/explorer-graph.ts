@@ -47,12 +47,15 @@ function displayLabel(node: GraphNode): string {
 interface PackedNode {
   id: string;
   data: GraphNode;
+  /** Scene coordinates - the camera group, not the node, does the zoom. */
   x: number;
   y: number;
   r: number;
   depth: number;
   fill: string;
   label: string;
+  /** Labels live in screen space so text keeps its size while the camera moves. */
+  labelX: number;
   labelY: number;
   amount: string;
   showLabel: boolean;
@@ -125,10 +128,11 @@ export class ExplorerGraph {
       lands in the same render flush as the snapped layout, so the
       browser animates from the last blended position to the final one. */
   private readonly lastInteraction = signal<'zoom' | 'data'>('data');
-  // Zoom deliberately short and firm: at 750ms the repacked circles
-  // visibly flew across the viewport; 300ms reads as a snap into place.
+  // The zoom animates one camera transform, so the whole scene scales
+  // uniformly - nothing flies on its own, and 450ms reads as a calm
+  // glide rather than the snap the old per-circle animation needed.
   protected readonly durationMs = computed(() =>
-    this.blendTree() ? 0 : this.lastInteraction() === 'zoom' ? 300 : 500,
+    this.blendTree() ? 0 : this.lastInteraction() === 'zoom' ? 450 : 500,
   );
 
   protected readonly size = SIZE;
@@ -147,6 +151,19 @@ export class ExplorerGraph {
     return (id && packed.descendants().find((node) => node.data.id === id)) || packed;
   });
 
+  /** The zoom is one animated transform on the group holding all circles.
+      Animating each circle's cx/cy/r instead made the big frame circles
+      visibly fly across the viewport on zoom-out - a camera pan keeps
+      the whole scene rigid while it scales. While the slider scrubs the
+      camera is identity: the morph is rendered from the root. */
+  protected readonly cameraTransform = computed(() => {
+    const focus = this.blendLayout() ? this.layout() : this.focus();
+    const k = SIZE / (focus.r * 2);
+    const tx = SIZE / 2 - focus.x * k;
+    const ty = SIZE / 2 - focus.y * k;
+    return `translate(${tx}px, ${ty}px) scale(${k})`;
+  });
+
   protected readonly nodes = computed<PackedNode[]>(() => {
     const blendLayout = this.blendLayout();
     if (blendLayout) return this.blendedNodes(this.layout(), blendLayout, this.blend());
@@ -159,49 +176,52 @@ export class ExplorerGraph {
     const alertsOnly = this.alertsOnly();
     const k = SIZE / (focus.r * 2);
 
-    // Only the focused subtree plus the ancestors that frame it. Pack
-    // circles never overlap, but at zoom the siblings of the focus crowd
-    // into the viewport and paint over it - hiding them is what makes a
-    // zoomed level readable.
+    // Every circle stays in the DOM at its packed position - the camera
+    // does the zooming. Out-of-focus branches simply glide off-screen,
+    // so a zoom-out has nothing to pop in: the siblings are already
+    // there and arrive with the pan. Labels stay restricted to the
+    // focused subtree below, so the corners never fill with text.
     const inFocus = new Set(focus.descendants().map((node) => node.data.id));
-    for (const ancestor of focus.ancestors()) inFocus.add(ancestor.data.id);
 
     return packed
       .descendants()
-      .filter((node) => inFocus.has(node.data.id))
       // Shallow first, so a child always paints over its parent.
       .sort((a, b) => a.depth - b.depth)
       .map((node) => {
-      const r = node.r * k;
+      // Label sizing and visibility depend on how big the circle is on
+      // screen, which is a camera question, not a layout one.
+      const screenR = node.r * k;
       const isLeaf = !node.data.children?.length;
       // Inside a merchant circle every leaf repeats the merchant name;
       // the amount is the only thing that differs, so show that instead.
       const parentLabel = node.parent ? displayLabel(node.parent.data) : null;
       const own = displayLabel(node.data);
       const label = isLeaf && own === parentLabel ? chf(node.data.amount_chf) : own;
-      const fontSize = r > 150 ? 30 : 22;
-      const fits = label.length * fontSize * GLYPH_WIDTH < r * 1.85;
+      const fontSize = screenR > 150 ? 30 : 22;
+      const fits = label.length * fontSize * GLYPH_WIDTH < screenR * 1.85;
       // The filter dims instead of re-packing: positions never move, so
       // spatial memory and the scrub morph survive filtering.
       const dimmed = alertsOnly && !(alertIndex?.subtree.has(node.data.id) ?? false);
+      const labelRing = inFocus.has(node.data.id) && node.depth === focus.depth + 1;
       return {
         id: node.data.id,
         data: node.data,
-        x: (node.x - focus.x) * k + SIZE / 2,
-        y: (node.y - focus.y) * k + SIZE / 2,
-        r,
+        x: node.x,
+        y: node.y,
+        r: node.r,
         depth: node.depth,
         fill: mode === 'delta' ? this.deltaFill(node, dark) : this.absoluteFill(node, dark),
         label,
+        labelX: (node.x - focus.x) * k + SIZE / 2,
         // A container's label rides near its top edge; centred, it lands
         // on top of the children it is supposed to name.
-        labelY: (node.y - focus.y) * k + SIZE / 2 - (isLeaf ? 0 : r - fontSize * 1.3),
+        labelY: (node.y - focus.y) * k + SIZE / 2 - (isLeaf ? 0 : screenR - fontSize * 1.3),
         amount: chf(node.data.amount_chf),
         // Only the ring directly below focus gets labels, and only where
         // the circle is actually big enough to hold one - deeper or
         // smaller ones overlap into noise.
-        showLabel: node.depth === focus.depth + 1 && r > LABEL_MIN_R && fits && !dimmed,
-        showAmount: !isLeaf && node.depth === focus.depth + 1 && r > AMOUNT_MIN_R && fits && !dimmed,
+        showLabel: labelRing && screenR > LABEL_MIN_R && fits && !dimmed,
+        showAmount: !isLeaf && labelRing && screenR > AMOUNT_MIN_R && fits && !dimmed,
         fontSize,
         isLeaf,
         opacity: (isLeaf ? LEAF_OPACITY : CONTAINER_OPACITY) * (dimmed ? DIMMED_FACTOR : 1),
@@ -277,6 +297,8 @@ export class ExplorerGraph {
       depth: node.depth,
       fill: mode === 'delta' ? this.deltaFill(node, dark) : this.absoluteFill(node, dark),
       label,
+      // The camera is identity while blending, so screen equals scene.
+      labelX: x,
       labelY: y - (isLeaf ? 0 : r - fontSize * 1.3),
       amount: chf(node.data.amount_chf),
       showLabel: node.depth === 1 && r > LABEL_MIN_R && fits,

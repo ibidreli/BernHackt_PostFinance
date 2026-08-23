@@ -93,25 +93,44 @@
 
             @if (message.levers.length) {
               <div class="mt-4">
-                <h2 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Hebel</h2>
-                <ul class="mt-2 space-y-1.5">
+                <h2 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Hebel – wo Sparen realistisch ist
+                </h2>
+                <!-- Erklärt die Rechnung statt sie vorauszusetzen: Balken =
+                     üblicher Monat, farbiger Teil = Abstand zum eigenen
+                     sparsamsten Monat, also belegtes Sparpotenzial. -->
+                <p class="mt-1 text-xs text-muted-foreground">
+                  Deine grössten variablen Ausgaben. Der volle Balken ist ein üblicher Monat, der
+                  farbige Teil dein Sparpotenzial – so viel lagst du in deinem sparsamsten Monat
+                  bereits darunter.
+                </p>
+                <ul class="mt-2.5 space-y-3">
                   @for (lever of message.levers; track lever.category) {
-                    <li class="flex items-center gap-3 text-base">
-                      <a
-                        class="w-44 shrink-0 truncate underline-offset-2 hover:underline"
-                        [routerLink]="'/kategorien'"
-                        [queryParams]="leverLink(lever.category)"
-                      >
-                        {{ lever.category }}
-                      </a>
-                      <span class="h-1.5 flex-1 overflow-hidden rounded-full bg-border">
+                    <!-- Balken unter dem Namen statt daneben: so muss der
+                         Kategoriename nie abgeschnitten werden. -->
+                    <li [title]="leverTitle(lever)">
+                      <div class="flex items-baseline justify-between gap-3 text-base">
+                        <a
+                          class="truncate underline-offset-2 hover:underline"
+                          [routerLink]="'/kategorien'"
+                          [queryParams]="leverLink(lever.category)"
+                        >
+                          {{ lever.category }}
+                        </a>
+                        <span class="shrink-0 whitespace-nowrap text-sm text-muted-foreground">
+                          Ø {{ chf(lever.monthly_avg_chf) }}/Mt ·
+                          <span class="font-medium text-foreground">{{ chf(lever.potential_chf) }} sparbar</span>
+                        </span>
+                      </div>
+                      <span class="mt-1.5 flex h-2 overflow-hidden rounded-full bg-border">
                         <span
-                          class="block h-full rounded-full bg-secondary transition-[width] duration-500"
-                          [style.width.%]="(lever.monthly_avg_chf / message.levers[0].monthly_avg_chf) * 100"
+                          class="block h-full bg-secondary/30 transition-[width] duration-500"
+                          [style.width.%]="leverPct(lever.monthly_avg_chf - lever.potential_chf, message.levers)"
                         ></span>
-                      </span>
-                      <span class="shrink-0 whitespace-nowrap text-right text-sm text-muted-foreground">
-                        {{ chf(lever.monthly_avg_chf) }}/Mt · −{{ chf(lever.potential_chf) }}
+                        <span
+                          class="block h-full bg-secondary transition-[width] duration-500"
+                          [style.width.%]="leverPct(lever.potential_chf, message.levers)"
+                        ></span>
                       </span>
                     </li>
                   }

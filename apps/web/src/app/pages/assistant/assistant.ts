@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
-import { Assistant, HORIZONS, type Horizon, type Status } from '../../core/assistant';
+import { Assistant, HORIZONS, type Horizon, type Lever, type Status } from '../../core/assistant';
 import type { AdjustmentPayload } from '../../core/forecast';
 import { Handoff } from '../../core/handoff';
 import { AssistantChart } from './assistant-chart';
@@ -129,6 +129,23 @@ export class AssistantPage {
       case 'one_off':
         return `${payload.label} einmalig ${CHF.format(payload.amount_chf)}`;
     }
+  }
+
+  /** Bar segments share one scale: the biggest lever's monthly average
+      is 100%, so the bars stay comparable across the list. */
+  protected leverPct(value: number, levers: Lever[]): number {
+    const max = levers[0]?.monthly_avg_chf || 1;
+    return Math.max((value / max) * 100, 0);
+  }
+
+  /** The whole derivation in one hover sentence - the bar shows it, the
+      title spells it out. */
+  protected leverTitle(lever: Lever): string {
+    const floor = lever.monthly_avg_chf - lever.potential_chf;
+    return (
+      `Üblicher Monat: ${CHF.format(lever.monthly_avg_chf)} · sparsamster Monat: ` +
+      `${CHF.format(floor)} · Differenz = Sparpotenzial ${CHF.format(lever.potential_chf)}`
+    );
   }
 
   /** Lever category ("Main // Sub") -> its bubble on /kategorien. */
