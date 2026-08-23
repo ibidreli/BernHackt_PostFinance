@@ -5,16 +5,11 @@
   [class.w-[72px]]="collapsed()"
 >
   <div class="flex items-center gap-2 px-4 py-4" [class.justify-center]="collapsed()">
-    <span
-      aria-hidden="true"
-      class="grid size-8 shrink-0 place-items-center rounded-lg bg-primary font-bold text-pf-teal"
-    >
-      P
-    </span>
+    <img src="favicon.svg" alt="PostFinance Logo" class="size-8 shrink-0 rounded" />
     @if (!collapsed()) {
       <div class="leading-tight whitespace-nowrap">
-        <p class="text-sm font-semibold">PostFinance</p>
-        <p class="text-xs text-muted-foreground">Horizons</p>
+        <p class="text-sm font-semibold">Horizons</p>
+        <p class="text-xs text-muted-foreground">PostFinance</p>
       </div>
     }
   </div>

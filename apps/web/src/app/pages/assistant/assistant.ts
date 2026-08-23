@@ -12,6 +12,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Assistant, HORIZONS, type Horizon, type Lever, type Status } from '../../core/assistant';
 import type { AdjustmentPayload } from '../../core/forecast';
 import { Handoff } from '../../core/handoff';
+import { RailOutlet } from '../../core/rail';
 import { AssistantChart } from './assistant-chart';
 
 const STATUS_BADGES: Record<Status, { label: string; classes: string }> = {
@@ -25,7 +26,7 @@ const STATUS_BADGES: Record<Status, { label: string; classes: string }> = {
 const CHF = new Intl.NumberFormat('de-CH', { style: 'currency', currency: 'CHF', maximumFractionDigits: 0 });
 
 @Component({
-  imports: [AssistantChart, RouterLink],
+  imports: [AssistantChart, RailOutlet, RouterLink],
   selector: 'app-assistant',
   templateUrl: './assistant.html',
 })

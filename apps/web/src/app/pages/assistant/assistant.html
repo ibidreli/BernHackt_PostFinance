@@ -1,30 +1,7 @@
-<div class="flex h-full flex-col gap-4 lg:flex-row">
-  <!-- Chat -->
+<!-- Die Seitensteuerung (Horizont, Annahmen) lebt wie auf Prognose und
+     Kategorien in der rechten Leiste, nicht als Karte im Inhalt. -->
+<div class="flex h-full flex-col gap-4">
   <section class="flex min-w-0 flex-1 flex-col gap-4" aria-label="Chat">
-    <header class="flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <h1 class="text-lg font-semibold">Assistenz</h1>
-        <p class="text-sm text-muted-foreground">
-          Anschaffung, Was-wäre-wenn, Sparziel.
-        </p>
-      </div>
-
-      <div role="tablist" aria-label="Zeithorizont" class="tabs tabs-box bg-surface">
-        @for (horizon of horizons; track horizon.value) {
-          <button
-            type="button"
-            role="tab"
-            class="tab"
-            [class.tab-active]="assistant.horizon() === horizon.value"
-            [attr.aria-selected]="assistant.horizon() === horizon.value"
-            (click)="setHorizon(horizon.value)"
-          >
-            {{ horizon.label }}
-          </button>
-        }
-      </div>
-    </header>
-
     <div #transcript class="flex-1 space-y-4 overflow-y-auto pr-1" aria-live="polite">
       @for (message of assistant.messages(); track $index) {
         @if (message.role === 'user') {
@@ -188,83 +165,111 @@
     </form>
   </section>
 
-  <!-- Annahmen -->
-  <aside class="w-full shrink-0 space-y-5 rounded-xl border border-border bg-surface p-4 lg:w-72" aria-label="Annahmen">
-    <div>
-      <h2 class="text-sm font-semibold">Annahmen</h2>
-      <p class="mt-1 text-xs text-muted-foreground">
+</div>
+
+<!-- Rechte Leiste: gleiche eingerückte Optik wie auf den anderen Seiten -
+     Pills für den Horizont, darunter die Annahmen als Regler. -->
+<ng-template appRail>
+  <div class="flex h-full flex-col gap-7 px-3 py-2 text-foreground">
+    <section>
+      <h2 class="px-1 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Horizont</h2>
+      <div class="flex flex-wrap gap-1.5">
+        @for (horizon of horizons; track horizon.value) {
+          <button
+            type="button"
+            class="rounded-full px-3 py-1.5 text-sm transition-colors"
+            [class.bg-foreground]="assistant.horizon() === horizon.value"
+            [class.text-background]="assistant.horizon() === horizon.value"
+            [class.bg-surface]="assistant.horizon() !== horizon.value"
+            [class.text-muted-foreground]="assistant.horizon() !== horizon.value"
+            [attr.aria-pressed]="assistant.horizon() === horizon.value"
+            (click)="setHorizon(horizon.value)"
+          >
+            {{ horizon.label }}
+          </button>
+        }
+      </div>
+    </section>
+
+    <section>
+      <h2 class="px-1 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Annahmen</h2>
+      <p class="px-1 pb-3 text-xs text-muted-foreground">
         Kein Orakel, ein Szenariorechner. Die Werte stehen unter jeder Antwort.
       </p>
-    </div>
 
-    <label class="block">
-      <span class="flex justify-between text-sm">
-        Lohnwachstum <span class="tabular-nums">{{ assistant.salaryGrowthPct() }} %</span>
-      </span>
-      <input
-        type="range"
-        class="range range-primary range-xs mt-2"
-        min="0"
-        max="5"
-        step="0.5"
-        [value]="assistant.salaryGrowthPct()"
-        (input)="assistant.salaryGrowthPct.set(+$any($event.target).value)"
-      />
-    </label>
+      <div class="space-y-4 px-1">
+        <label class="block">
+          <span class="flex justify-between text-sm">
+            Lohnwachstum <span class="tabular-nums">{{ assistant.salaryGrowthPct() }} %</span>
+          </span>
+          <input
+            type="range"
+            class="range range-primary range-xs mt-2"
+            min="0"
+            max="5"
+            step="0.5"
+            [value]="assistant.salaryGrowthPct()"
+            (input)="assistant.salaryGrowthPct.set(+$any($event.target).value)"
+          />
+        </label>
 
-    <label class="block">
-      <span class="flex justify-between text-sm">
-        Inflation <span class="tabular-nums">{{ assistant.inflationPct() }} %</span>
-      </span>
-      <input
-        type="range"
-        class="range range-primary range-xs mt-2"
-        min="0"
-        max="5"
-        step="0.5"
-        [value]="assistant.inflationPct()"
-        (input)="assistant.inflationPct.set(+$any($event.target).value)"
-      />
-    </label>
+        <label class="block">
+          <span class="flex justify-between text-sm">
+            Inflation <span class="tabular-nums">{{ assistant.inflationPct() }} %</span>
+          </span>
+          <input
+            type="range"
+            class="range range-primary range-xs mt-2"
+            min="0"
+            max="5"
+            step="0.5"
+            [value]="assistant.inflationPct()"
+            (input)="assistant.inflationPct.set(+$any($event.target).value)"
+          />
+        </label>
 
-    <label class="block">
-      <span class="flex justify-between text-sm">
-        Sparquote
-        <span class="tabular-nums">
-          {{ assistant.savingsRatePct() === null ? 'aus Historie' : assistant.savingsRatePct() + ' %' }}
-        </span>
-      </span>
-      <input
-        type="range"
-        class="range range-primary range-xs mt-2"
-        min="0"
-        max="50"
-        step="1"
-        [value]="assistant.savingsRatePct() ?? 0"
-        (input)="assistant.savingsRatePct.set(+$any($event.target).value)"
-      />
-      @if (assistant.savingsRatePct() !== null) {
+        <label class="block">
+          <span class="flex justify-between text-sm">
+            Sparquote
+            <span class="tabular-nums">
+              {{ assistant.savingsRatePct() === null ? 'aus Historie' : assistant.savingsRatePct() + ' %' }}
+            </span>
+          </span>
+          <input
+            type="range"
+            class="range range-primary range-xs mt-2"
+            min="0"
+            max="50"
+            step="1"
+            [value]="assistant.savingsRatePct() ?? 0"
+            (input)="assistant.savingsRatePct.set(+$any($event.target).value)"
+          />
+          @if (assistant.savingsRatePct() !== null) {
+            <button
+              type="button"
+              class="mt-1 text-xs text-muted-foreground underline"
+              (click)="assistant.savingsRatePct.set(null)"
+            >
+              zurück auf Historie
+            </button>
+          }
+        </label>
+      </div>
+
+      <div class="flex flex-wrap gap-1.5 pt-3">
         <button
           type="button"
-          class="mt-1 text-xs text-muted-foreground underline"
-          (click)="assistant.savingsRatePct.set(null)"
+          class="rounded-full border border-border px-3 py-1.5 text-sm text-muted-foreground hover:bg-surface hover:text-foreground disabled:opacity-40"
+          [disabled]="assistant.pending()"
+          (click)="assistant.replay()"
         >
-          zurück auf Historie
+          Neu rechnen
         </button>
-      }
-    </label>
+      </div>
 
-    <button
-      type="button"
-      class="btn btn-sm btn-outline w-full"
-      [disabled]="assistant.pending()"
-      (click)="assistant.replay()"
-    >
-      Neu rechnen
-    </button>
-
-    <p class="border-t border-border pt-3 text-xs text-muted-foreground">
-      Keine Rendite, kein Zins. Reine Summierung über die erkannten Fixkosten und den variablen Median.
-    </p>
-  </aside>
-</div>
+      <p class="px-1 pt-3 text-xs text-muted-foreground">
+        Keine Rendite, kein Zins. Reine Summierung über die erkannten Fixkosten und den variablen Median.
+      </p>
+    </section>
+  </div>
+</ng-template>
